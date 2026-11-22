@@ -1,5 +1,6 @@
 # 從 Docker Hub 拉 image 跑的版本，貼進 Dockhand 用。
-# 需要的變數：TUNNEL_TOKEN（Cloudflare Zero Trust → Networks → Tunnels 拿到的權杖）。
+# 需要的變數：TUNNEL_TOKEN（Cloudflare Zero Trust → Networks → Tunnels 拿到的權杖）、
+# ADMIN_PASSWORD_HASH（admin 密碼雜湊，產生方式見下方）。
 # Tunnel 的 public hostname 的 service 填 http://agent:7681；登入控管在 Cloudflare Access 設。
 #
 # 網路設計：agent 只接 internal（沒有對外路由，也連不到 LAN／NAS），所有對外連線經 egress
@@ -17,9 +18,10 @@ services:
       AGENT_USERS: "USER1,USER2"
       # admin 工號，逗號分隔。輸入後要密碼，進去看得到所有工號的 session，預設目錄是 /repos。
       AGENT_ADMINS: "A00001"
-      # admin 密碼的雜湊（openssl passwd -6 產生）。compose 裡的 $ 要寫成 $$，所以產生時直接轉好。
-      # 留空的話 admin 無法登入。
-      AGENT_ADMIN_PASSWORD_HASH: ''
+      # admin 密碼的雜湊，值放在 Dockhand 的變數 ADMIN_PASSWORD_HASH。
+      # 在 NAS 上用 `openssl passwd -6 | base64 -w0` 產生（base64 過的沒有 $，不會被當成變數展開）。
+      # 沒設定的話 admin 無法登入。
+      AGENT_ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
       TZ: Asia/Taipei
       # ttyd 的第二道帳密（user:password）。留空就不啟用，控管交給 Cloudflare Access。
       TTYD_CREDENTIAL: ""

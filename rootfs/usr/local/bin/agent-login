@@ -27,9 +27,25 @@ load_ids() { # load_ids <陣列名稱> <逗號分隔字串>
 load_ids users "${AGENT_USERS:-}"
 load_ids admins "${AGENT_ADMINS:-}"
 
-# 比對 SHA-512 crypt 雜湊（`openssl passwd -6` 產生的 $6$<salt>$<hash>）。
+# AGENT_ADMIN_PASSWORD_HASH 接受兩種寫法：
+#   1. 原樣的 $6$<salt>$<hash>（`openssl passwd -6` 的輸出）
+#   2. 上面那串再 base64（`openssl passwd -6 | base64 -w0`）——完全沒有 $，放進 Dockhand
+#      的環境變數、.env、compose 都不會被當成變數展開，最不容易出錯。
+# 也容忍外面多包一層引號、或 compose 跳脫用的 $$。
+admin_hash() {
+  local h="${AGENT_ADMIN_PASSWORD_HASH:-}"
+  h="${h#\'}"; h="${h%\'}"; h="${h#\"}"; h="${h%\"}"
+  h="${h//\$\$/\$}"
+  if [[ "$h" != '$6$'* ]]; then
+    h="$(printf '%s' "$h" | base64 -d 2>/dev/null | tr -d '\n')" || h=''
+  fi
+  printf '%s' "$h"
+}
+
+# 比對 SHA-512 crypt 雜湊。
 verify_password() {
-  local hash="${AGENT_ADMIN_PASSWORD_HASH:-}" salt got
+  local hash salt got
+  hash="$(admin_hash)"
   [[ "$hash" == '$6$'*'$'* ]] || return 1
   salt="${hash#\$6\$}"
   salt="${salt%%\$*}"

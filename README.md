@@ -18,12 +18,14 @@ tmux 選單，在裡面用 Claude Code、Gemini CLI、Codex CLI。
 | `AGENT_ADMINS` | admin 工號，逗號分隔。輸入後要密碼；選單會列出**所有工號**的 session（標 `[工號]`），附接別人的一律多重附接、不踢人；預設目錄 `/repos`（NAS 的整個 `repos`） |
 | `AGENT_ADMIN_PASSWORD_HASH` | admin 密碼的 SHA-512 crypt 雜湊。留空則 admin 無法登入。密碼錯 3 次鎖 30 秒 |
 
-產生雜湊（在 NAS 上跑；Mac 內建的 LibreSSL 不支援 `-6`）。輸出已經把 `$` 轉成 compose 要的 `$$`，
-整串用單引號貼進 `AGENT_ADMIN_PASSWORD_HASH: '...'`：
+產生雜湊（在 NAS 上跑；Mac 內建的 LibreSSL 不支援 `-6`）。輸出是 base64，裡面沒有 `$`，貼進 Dockhand
+的變數 `ADMIN_PASSWORD_HASH` 不會被當成變數展開：
 
 ```sh
-openssl passwd -6 | sed 's/\$/$$/g'
+openssl passwd -6 | base64 -w0; echo
 ```
+
+也接受原樣的 `$6$...`（直接寫在 compose 裡時要把 `$` 寫成 `$$`）。
 
 admin 密碼一樣是**軟區分**：一般工號在容器裡也能直接 `cd /repos`、attach 別人的 socket、讀到環境變數裡的雜湊。
 
