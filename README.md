@@ -12,11 +12,28 @@ tmux 選單，在裡面用 Claude Code、Gemini CLI、Codex CLI。
 
 ## 工號與 admin
 
-| ENV | 說明 |
-|---|---|
-| `AGENT_USERS` | 一般工號，逗號分隔。輸入後直接進自己的 tmux 選單，預設目錄 `/workspace/<工號>` |
-| `AGENT_ADMINS` | admin 工號，逗號分隔。輸入後要密碼；選單會列出**所有工號**的 session（標 `[工號]`），附接別人的一律多重附接、不踢人；預設目錄 `/repos`（NAS 的整個 `repos`） |
-| `AGENT_ADMIN_PASSWORD_HASH` | admin 密碼的 SHA-512 crypt 雜湊。留空則 admin 無法登入。密碼錯 3 次鎖 30 秒 |
+同一個網域兩個入口、兩個容器（同一個 image，用 `AGENT_ROLE` 區分）：
+
+| 入口 | 容器 | 收誰 | 掛載 |
+|---|---|---|---|
+| `https://<網域>/` | `agent`（`AGENT_ROLE=user`） | `AGENT_USERS` | `/workspace`（同仁的程式碼） |
+| `https://<網域>/admin` | `admin`（`AGENT_ROLE=admin`、`TTYD_BASE_PATH=/admin`） | `AGENT_ADMINS` + 密碼 | `/repos`（放所有 repo 的上層目錄）、`/workspace` |
+
+- **一般同仁的容器裡根本沒有 `/repos`**。這是拆兩個容器的原因：容器裡大家都是同一個 Linux 帳號 `dev`，
+  同一個容器擋不住誰 `cd` 到哪。
+- 兩個容器共用家目錄（Agent 登入一次兩邊都能用、`~/.mrconfig` 同一份）與 tmux socket 目錄
+  （`/path/to/tmux`）。
+- admin 選單列出所有工號的 session（標 `[工號]`），附接別人的一律多重附接、不踢人。附接進去後指令是在
+  **同仁的 agent 容器裡**執行，那裡一樣看不到 `/repos`。
+- admin 密碼錯 3 次鎖 30 秒。真正擋人的是 Cloudflare Access：替 `/admin` 另建一個 Access Application
+  （同網域、path 填 `admin`），只放 admin。
+
+Cloudflare Tunnel 的 public hostname 設兩條，**`/admin` 那條排前面**：
+
+| hostname | path | service |
+|---|---|---|
+| `<網域>` | `admin*` | `http://admin:7681` |
+| `<網域>` | （空） | `http://agent:7681` |
 
 產生雜湊（在 NAS 上跑；Mac 內建的 LibreSSL 不支援 `-6`）。輸出是 base64，裡面沒有 `$`，貼進 Dockhand
 的變數 `ADMIN_PASSWORD_HASH` 不會被當成變數展開：
@@ -67,13 +84,14 @@ Claude 的 marketplace 與 plugin 是**容器啟動時**由 `agent-seed` 補齊�
 
 ## 部署（NAS / Dockhand）
 
-1. 第一次：建資料目錄並交給 3000:3000。
+1. 第一次：建資料目錄並交給 3000:3000（tmux 目錄要 700）。
    ```sh
-   sudo mkdir -p /path/to/home
+   sudo mkdir -p /path/to/home /path/to/tmux
    sudo chown -R 3000:3000 /path/to /path/to/workspace
+   sudo chmod 700 /path/to/tmux
    ```
 2. 在 Dockhand 貼 [`compose.hub.yaml`](compose.hub.yaml)，填 `TUNNEL_TOKEN`，視需要修改 `AGENT_USERS`。
-3. Cloudflare：Tunnel 的 public hostname 的 service 填 `http://agent:7681`，再在 Access 設定誰能進來。
+3. Cloudflare：Tunnel 設兩條 public hostname（見上方「工號與 admin」），Access 分別替 `/` 與 `/admin` 設定誰能進來。
 4. 進終端機後，由一個人登入三個 Agent（`claude`、`gemini`、`codex`），憑證存在
    `/path/to/home`，重建容器不用重新登入。
 
@@ -91,7 +109,8 @@ docker compose up -d
 open http://127.0.0.1:7681
 ```
 
-資料放在 `./data`（已在 `.gitignore`）。本機版多一個 `peek` 服務把 `127.0.0.1:7681` 轉進 internal 網路。
+資料放在 `./data`（已在 `.gitignore`）。本機版多 `peek`、`peek-admin` 把 `127.0.0.1:7681`（同仁）與
+`127.0.0.1:7682/admin`（admin，工號 `A00001`、密碼 `test`）轉進 internal 網路。
 
 手動推 Docker Hub（備案，Apple Silicon 上會比較慢）：`./push-hub.sh`。
 

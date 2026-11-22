@@ -2,10 +2,10 @@
 #
 #     ./build.sh
 #     docker compose up -d
-#     打開 http://127.0.0.1:7681
+#     打開 http://127.0.0.1:7681（同仁）與 http://127.0.0.1:7682/admin（admin，密碼 test）
 #
-# agent 只接 internal 網路，沒辦法直接 publish port，所以多一個 peek 把 127.0.0.1:7681
-# 轉進去（只在本機驗證用，正式的 compose.hub.yaml 沒有它）。
+# agent、admin 只接 internal 網路，沒辦法直接 publish port，所以多 peek、peek-admin 把本機的
+# port 轉進去（只在本機驗證用，正式的 compose.hub.yaml 沒有它們）。
 # 要連 Cloudflare Tunnel 一起測：在 .env 填 TUNNEL_TOKEN，再 docker compose --profile tunnel up -d。
 
 services:
@@ -14,16 +14,14 @@ services:
     hostname: NAS-AGENT
     init: true
     environment:
+      AGENT_ROLE: user
       AGENT_USERS: "USER1,USER2"
-      AGENT_ADMINS: "A00001"
-      # 本機測試用密碼 test（openssl passwd -6 產生，$ 寫成 $$）。
-      AGENT_ADMIN_PASSWORD_HASH: '$$6$$cdyagentlocal$$6P6zLF10ay5VrqUZ2n0EE5wlq8fUf3/1bLxwgh5zefpZXQ8JNNBtPFkQd43v5lDsPN7KlRSo8qWFfwdnbddbh/'
       TZ: Asia/Taipei
       TTYD_CREDENTIAL: ""
     volumes:
       - ./data/workspace:/workspace
-      - ./data/repos:/repos
       - ./data/home:/home/dev
+      - ./data/tmux:/tmp/tmux-3000
     expose:
       - "7681"
     networks:
@@ -35,6 +33,36 @@ services:
     cpus: "6"
     mem_limit: 16g
     pids_limit: 2048
+    depends_on:
+      egress:
+        condition: service_started
+    restart: unless-stopped
+
+  admin:
+    image: ${AGENT_IMAGE:-cdy_agent:latest}
+    hostname: NAS-AGENT-ADMIN
+    init: true
+    environment:
+      AGENT_ROLE: admin
+      AGENT_ADMINS: "A00001"
+      # 本機測試用密碼 test（openssl passwd -6 產生，$ 寫成 $$）。
+      AGENT_ADMIN_PASSWORD_HASH: '$$6$$cdyagentlocal$$6P6zLF10ay5VrqUZ2n0EE5wlq8fUf3/1bLxwgh5zefpZXQ8JNNBtPFkQd43v5lDsPN7KlRSo8qWFfwdnbddbh/'
+      TTYD_BASE_PATH: /admin
+      TZ: Asia/Taipei
+      TTYD_CREDENTIAL: ""
+    volumes:
+      - ./data/repos:/repos
+      - ./data/workspace:/workspace
+      - ./data/home:/home/dev
+      - ./data/tmux:/tmp/tmux-3000
+    expose:
+      - "7681"
+    networks:
+      - internal
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       egress:
         condition: service_started
@@ -66,6 +94,20 @@ services:
       - agent
     restart: unless-stopped
 
+  peek-admin:
+    image: alpine/socat:latest
+    command: tcp-listen:7681,fork,reuseaddr tcp-connect:admin:7681
+    ports:
+      - "127.0.0.1:7682:7681"
+    networks:
+      - internal
+      - outbound
+    cap_drop:
+      - ALL
+    depends_on:
+      - admin
+    restart: unless-stopped
+
   cloudflared:
     profiles: [tunnel]
     image: cloudflare/cloudflared:latest
@@ -81,6 +123,8 @@ services:
       - no-new-privileges:true
     depends_on:
       agent:
+        condition: service_healthy
+      admin:
         condition: service_healthy
     restart: unless-stopped
 

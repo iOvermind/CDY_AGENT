@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # 容器啟動：補齊家目錄、建立工號 workspace、背景同步 Claude 技能，最後交給 ttyd。
+#
+# AGENT_ROLE 決定這個容器收誰：
+#   user   只收 AGENT_USERS（一般同仁的 agent 容器）
+#   admin  只收 AGENT_ADMINS（admin 容器，掛 /repos，通常跑在 TTYD_BASE_PATH=/admin）
+#   未設定  兩種都收（單一容器的舊用法）
 set -euo pipefail
+ROLE="${AGENT_ROLE:-}"
 
 say() { printf '[entrypoint] %s\n' "$*"; }
 
@@ -9,6 +15,12 @@ say() { printf '[entrypoint] %s\n' "$*"; }
 # 已經存在的檔案一律不動。
 cp -rn /etc/skel/. "$HOME"/ 2>/dev/null || true
 mkdir -p "$HOME/.claude" "$HOME/.cache" "$HOME/.local/bin"
+
+# tmux 的 socket 目錄。agent 與 admin 兩個容器會掛同一個 host 目錄到這裡，admin 才看得到、
+# 附接得到同仁的 session。tmux 要求這個目錄只有自己能讀寫（700），否則拒絕使用。
+TMUX_SOCKET_DIR="${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)"
+mkdir -p "$TMUX_SOCKET_DIR"
+chmod 700 "$TMUX_SOCKET_DIR" || say "警告：無法把 $TMUX_SOCKET_DIR 設成 700，tmux 可能拒絕啟動（檢查 host 目錄擁有者是否為 3000）"
 
 if [ ! -f "$HOME/.claude/settings.json" ]; then
   cp /opt/agent/claude-settings.json "$HOME/.claude/settings.json"
@@ -30,13 +42,23 @@ for raw in "${users[@]}"; do
   count=$((count + 1))
 done
 say "工號數：$count"
-[ "$count" -gt 0 ] || say '警告：AGENT_USERS 是空的，沒有人登入得了。'
+[ "$count" -gt 0 ] || [ "$ROLE" = admin ] || say '警告：AGENT_USERS 是空的，沒有人登入得了。'
 
 # ── Claude 技能同步（背景跑，不擋 ttyd 啟動）──────────────
-nohup /usr/local/bin/agent-seed >> "$HOME/.cache/agent-seed.log" 2>&1 &
+# 家目錄是共用的，只讓非 admin 的容器跑，避免兩個容器同時裝同一批 plugin。
+if [ "$ROLE" != admin ]; then
+  nohup /usr/local/bin/agent-seed >> "$HOME/.cache/agent-seed.log" 2>&1 &
+fi
 
 # ── ttyd ──────────────────────────────────────────────────
-args=(-W -p 7681 --ping-interval 30 -t titleFixed=CDY_AGENT -t disableLeaveAlert=true)
+title="CDY_AGENT"
+[ "$ROLE" = admin ] && title="CDY_AGENT admin"
+args=(-W -p 7681 --ping-interval 30 -t "titleFixed=$title" -t disableLeaveAlert=true)
+# 跑在子路徑底下（例如同一個網域的 /admin）。
+if [ -n "${TTYD_BASE_PATH:-}" ]; then
+  args+=(-b "$TTYD_BASE_PATH")
+  say "ttyd base path：$TTYD_BASE_PATH"
+fi
 if [ -n "${TTYD_CREDENTIAL:-}" ]; then
   args+=(-c "$TTYD_CREDENTIAL")
   say 'ttyd 已啟用帳密（TTYD_CREDENTIAL）'

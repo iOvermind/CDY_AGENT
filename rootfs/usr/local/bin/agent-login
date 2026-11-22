@@ -24,8 +24,12 @@ load_ids() { # load_ids <陣列名稱> <逗號分隔字串>
     dest["${u^^}"]="$u"
   done
 }
-load_ids users "${AGENT_USERS:-}"
-load_ids admins "${AGENT_ADMINS:-}"
+# AGENT_ROLE=user 只收一般工號、admin 只收 admin 工號、未設定兩種都收（見 agent-entrypoint）。
+case "${AGENT_ROLE:-}" in
+  user)  load_ids users "${AGENT_USERS:-}" ;;
+  admin) load_ids admins "${AGENT_ADMINS:-}" ;;
+  *)     load_ids users "${AGENT_USERS:-}"; load_ids admins "${AGENT_ADMINS:-}" ;;
+esac
 
 # AGENT_ADMIN_PASSWORD_HASH 接受兩種寫法：
 #   1. 原樣的 $6$<salt>$<hash>（`openssl passwd -6` 的輸出）
@@ -81,7 +85,11 @@ trap 'echo' INT
 fails=0
 while true; do
   printf '\033[2J\033[H'
-  printf '\033[36m══ CDY_AGENT ══\033[0m\n\n'
+  if [ "${AGENT_ROLE:-}" = admin ]; then
+    printf '\033[35m══ CDY_AGENT admin ══\033[0m\n\n'
+  else
+    printf '\033[36m══ CDY_AGENT ══\033[0m\n\n'
+  fi
   if [ "${#users[@]}" -eq 0 ] && [ "${#admins[@]}" -eq 0 ]; then
     printf '\033[31m尚未設定任何工號（AGENT_USERS 是空的），請聯絡管理者。\033[0m\n'
     sleep 30
