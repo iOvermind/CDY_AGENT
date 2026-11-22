@@ -1,0 +1,11 @@
+#!/bin/sh
+# git 用的 ssh（Dockerfile 設 GIT_SSH_COMMAND=agent-git-ssh）。
+#
+# 依 tmux session 的 AGENT_USER（工號）挑金鑰：該工號跑過 agent-git-setup、有
+# /workspace/<工號>/.agent/ssh/id_ed25519，就只用那把；沒有就照一般 ssh（~/.ssh）的規則。
+# 用環境變數而不是 includeIf 判斷，是因為 git clone 時還沒有 repo，includeIf gitdir 不會生效。
+key="${AGENT_WORKSPACE_ROOT:-/workspace}/${AGENT_USER:-}/.agent/ssh/id_ed25519"
+if [ -n "${AGENT_USER:-}" ] && [ -f "$key" ]; then
+  exec ssh -i "$key" -o IdentitiesOnly=yes "$@"
+fi
+exec ssh "$@"

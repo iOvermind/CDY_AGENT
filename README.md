@@ -80,6 +80,29 @@ Claude 的 marketplace 與 plugin 是**容器啟動時**由 `agent-seed` 補齊�
 憑證），log 在 `~/.cache/agent-seed.log`。`~/.claude/settings.json` 只在不存在時寫入預設值
 （繁體中文、dark theme、codegraph hook）。
 
+## 各工號自己的 git 身分
+
+每個工號可以用自己的 GitHub 帳號，同時使用互不干擾。在自己工號的 tmux session 裡執行一次：
+
+```sh
+agent-git-setup
+```
+
+它會問名字與 email、產生 SSH 金鑰並印出公鑰（貼到自己的 GitHub → Settings → SSH keys，類型選
+Authentication Key），然後：
+
+- `/workspace/<工號>/.agent/gitconfig`：自己的 `user.name`、`user.email`，以及把 GitHub 的 https 網址改走 SSH
+- 共用的 `~/.gitconfig` 加 `includeIf "gitdir:/workspace/<工號>/"`，自己目錄底下的 repo 自動套用
+- `GIT_SSH_COMMAND=agent-git-ssh` 依 session 的工號挑 `/workspace/<工號>/.agent/ssh/id_ed25519`，
+  `git clone` 也會用自己的金鑰
+
+測試：`agent-git-ssh -T git@github.com`（直接打 `ssh` 不會用到工號的金鑰）。
+
+注意：
+- 設定後自己目錄底下連 GitHub 一律走 SSH，公鑰沒貼到 GitHub 前 clone / pull 會 Permission denied。
+- 軟區分：大家在容器裡是同一個 Linux 帳號，技術上讀得到彼此的金鑰。
+- admin 容器不受影響，照用 admin 專用的 `~/.ssh`。
+
 ## 對外連線
 
 容器裡已經設好 `HTTP(S)_PROXY` 與 SSH 的 `ProxyCommand`，大部分工具不用另外設定：

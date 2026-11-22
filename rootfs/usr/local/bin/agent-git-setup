@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# 設定「這個工號」自己的 git 身分與 GitHub SSH 金鑰。在自己工號的 tmux session 裡執行：
+#
+#     agent-git-setup
+#
+# 會做的事（重跑安全，已有的會沿用）：
+#   1. 建 /workspace/<工號>/.agent/，裡面放這個工號的 gitconfig 與 ssh 金鑰
+#   2. 問名字、email，寫進 .agent/gitconfig；GitHub 的 https 網址改走 SSH（用自己的金鑰）
+#   3. 在共用的 ~/.gitconfig 加 includeIf：/workspace/<工號>/ 底下的 repo 自動套用上面的設定
+#   4. 沒有金鑰就產生一把，印出公鑰讓你貼到自己的 GitHub
+#
+# 推送與 clone 用哪把金鑰由 agent-git-ssh 依 AGENT_USER 決定，所以 clone 也會用自己的金鑰。
+#
+# 注意：這是軟區分。大家在容器裡都是同一個 Linux 帳號，技術上讀得到彼此的金鑰。
+set -euo pipefail
+
+ROOT="${AGENT_WORKSPACE_ROOT:-/workspace}"
+id="${AGENT_USER:-}"
+if [ -z "$id" ] || [ ! -d "$ROOT/$id" ]; then
+  echo "請在自己工號的 tmux session 裡執行（找不到 AGENT_USER 或 $ROOT/<工號>）。" >&2
+  exit 1
+fi
+
+dir="$ROOT/$id/.agent"
+cfg="$dir/gitconfig"
+key="$dir/ssh/id_ed25519"
+mkdir -p "$dir/ssh"
+chmod 700 "$dir" "$dir/ssh"
+touch "$cfg"
+
+echo "== 工號 $id 的 git 設定"
+cur_name="$(git config -f "$cfg" user.name || true)"
+cur_email="$(git config -f "$cfg" user.email || true)"
+read -r -e -i "$cur_name" -p 'git 顯示名稱（user.name）：' name
+read -r -e -i "$cur_email" -p 'email（與 GitHub 帳號相同，commit 才會連到你）：' email
+name="${name:-$cur_name}"
+email="${email:-$cur_email}"
+[ -n "$name" ] && [ -n "$email" ] || { echo '名稱與 email 都要填。' >&2; exit 1; }
+
+git config -f "$cfg" user.name "$name"
+git config -f "$cfg" user.email "$email"
+# GitHub 的 https 網址改走 SSH，用自己的金鑰推送與拉取私人 repo。
+git config -f "$cfg" --replace-all url.git@github.com:.insteadOf https://github.com/
+
+# 共用 ~/.gitconfig：這個工號目錄底下的 repo 套用自己的設定。
+inc="includeIf.gitdir:$ROOT/$id/.path"
+if ! git config --global --get-all "$inc" 2>/dev/null | grep -qxF "$cfg"; then
+  git config --global --add "$inc" "$cfg"
+fi
+
+if [ ! -f "$key" ]; then
+  ssh-keygen -q -t ed25519 -N '' -C "$id@cdy-agent" -f "$key"
+  echo "已產生新的 SSH 金鑰。"
+fi
+chmod 600 "$key"
+
+echo
+echo "== 公鑰（貼到你自己的 GitHub → Settings → SSH and GPG keys → New SSH key，類型選 Authentication Key）"
+echo
+cat "$key.pub"
+echo
+echo "指紋（GitHub 上顯示的要一樣）：$(ssh-keygen -lf "$key.pub" | awk '{print $2}')"
+echo
+echo "複製方法：按住 Shift（Mac 不行就試 Option）再用滑鼠拖曳選取，再按 Cmd+C / Ctrl+C。"
+echo "公鑰檔案位置：$key.pub"
+echo
+echo "貼好後測試：agent-git-ssh -T git@github.com（看到 Hi <你的帳號>! 就成功了）"
+echo "身分設定套用到 $ROOT/$id/ 底下的 repo；金鑰在這個工號的所有 session 都會用到（含 git clone）。"
+echo
+echo "注意：設定後 $ROOT/$id/ 底下連 GitHub 一律走 SSH（包含 https 網址的公開 repo），"
+echo "      所以公鑰沒貼到 GitHub 之前，git clone / pull 都會出現 Permission denied。"

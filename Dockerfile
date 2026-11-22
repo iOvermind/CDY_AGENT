@@ -133,7 +133,8 @@ ENV HTTP_PROXY=http://egress:3128 \
     no_proxy=localhost,127.0.0.1,::1,agent,egress \
     NODE_USE_ENV_PROXY=1 \
     AGENT_SSH_PROXY=egress:3128 \
-    AGENT_ADMIN_HOME=/repos
+    AGENT_ADMIN_HOME=/repos \
+    GIT_SSH_COMMAND=agent-git-ssh
 
 EXPOSE 7681
 
