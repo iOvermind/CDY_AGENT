@@ -61,7 +61,7 @@ services:
     environment:
       AGENT_ROLE: admin
       # admin 工號，逗號分隔。輸入後要密碼，進去看得到所有工號的 session，預設目錄是 /repos。
-      AGENT_ADMINS: "A00001"
+      AGENT_ADMINS: "ADMIN1,ADMIN2"
       AGENT_ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
       # 跑在同一個網域的 /admin 底下。
       TTYD_BASE_PATH: /admin

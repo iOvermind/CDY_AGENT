@@ -110,7 +110,7 @@ open http://127.0.0.1:7681
 ```
 
 資料放在 `./data`（已在 `.gitignore`）。本機版多 `peek`、`peek-admin` 把 `127.0.0.1:7681`（同仁）與
-`127.0.0.1:7682/admin`（admin，工號 `A00001`、密碼 `test`）轉進 internal 網路。
+`127.0.0.1:7682/admin`（admin，工號 `ADMIN1`、密碼 `test`）轉進 internal 網路。
 
 手動推 Docker Hub（備案，Apple Silicon 上會比較慢）：`./push-hub.sh`。
 

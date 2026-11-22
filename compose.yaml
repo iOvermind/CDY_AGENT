@@ -44,7 +44,7 @@ services:
     init: true
     environment:
       AGENT_ROLE: admin
-      AGENT_ADMINS: "A00001"
+      AGENT_ADMINS: "ADMIN1,ADMIN2"
       # 本機測試用密碼 test（openssl passwd -6 產生，$ 寫成 $$）。
       AGENT_ADMIN_PASSWORD_HASH: '$$6$$cdyagentlocal$$6P6zLF10ay5VrqUZ2n0EE5wlq8fUf3/1bLxwgh5zefpZXQ8JNNBtPFkQd43v5lDsPN7KlRSo8qWFfwdnbddbh/'
       TTYD_BASE_PATH: /admin
