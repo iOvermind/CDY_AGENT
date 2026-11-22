@@ -252,7 +252,7 @@ def selector_ui(stdscr, view):
 
         role = "admin " if view.admin else ""
         title = f" CDY_AGENT ─ {role}工號 {tmux.user} 的 Tmux Session "
-        subtitle = " ↑/↓/j/k:移動 | Enter:附接(踢除其他端) | a:多重附接 | 1-9:快選 | n:新增 | x:關閉 | s:shell | u:換工號 | r:重整 "
+        subtitle = " ?:說明 | ↑/↓/j/k:移動 | Enter:附接(踢除其他端) | a:多重附接 | 1-9:快選 | n:新增 | x:關閉 | s:shell | u:換工號 | r:重整 "
         try:
             stdscr.addstr(0, 0, "═" * (w - 1), curses.color_pair(1))
             stdscr.addstr(0, 2, truncate_and_pad(title, w - 4, pad=False), curses.color_pair(1) | curses.A_BOLD)
@@ -375,6 +375,8 @@ def selector_ui(stdscr, view):
             return ("shell", "", False)
         elif ch in (ord("u"), ord("U")):
             return ("switch", "", False)
+        elif ch in (ord("?"), ord("h"), ord("H")):
+            return ("help", "", False)
 
 
 def main():
@@ -434,6 +436,8 @@ def main():
             subprocess.run(["/bin/bash", "-l"], cwd=tmux.home_dir)
         elif action == "switch":
             return
+        elif action == "help":
+            subprocess.run(["/usr/local/bin/agent-help"])
 
 
 if __name__ == "__main__":

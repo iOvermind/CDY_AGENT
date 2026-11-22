@@ -1,0 +1,240 @@
+#!/usr/bin/env python3
+"""CDY_AGENT 說明頁：預裝了哪些工具、Claude plugin／技能、快捷鍵與常用指令。
+
+選單按 ? 會打開這頁；在 shell 裡也可以直接打 agent-help。
+Claude 的 plugin 與技能清單是即時從 ~/.claude/plugins 讀的，裝了什麼就列什麼。
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import unicodedata
+
+HOME = os.path.expanduser("~")
+ROLE = os.environ.get("AGENT_ROLE", "")
+USER = os.environ.get("AGENT_USER", "")
+
+B, DIM, CYAN, YEL, GRN, MAG, RST = "\033[1m", "\033[2m", "\033[36m", "\033[33m", "\033[32m", "\033[35m", "\033[0m"
+
+
+def width(s):
+    return sum(2 if unicodedata.east_asian_width(c) in ("W", "F") else 1 for c in s)
+
+
+def clip(s, w):
+    out, cur = [], 0
+    for c in s:
+        cw = 2 if unicodedata.east_asian_width(c) in ("W", "F") else 1
+        if cur + cw > w:
+            out.append("…")
+            break
+        out.append(c)
+        cur += cw
+    return "".join(out)
+
+
+def pad(s, w):
+    return s + " " * max(0, w - width(s))
+
+
+def h1(t):
+    return f"\n{B}{CYAN}━━ {t} ━━{RST}\n"
+
+
+def rows(items, key_w=22, indent=2):
+    cols = shutil.get_terminal_size((120, 40)).columns
+    out = []
+    for k, v in items:
+        out.append(f"{' ' * indent}{YEL}{pad(k, key_w)}{RST} {clip(v, max(20, cols - key_w - indent - 2))}")
+    return "\n".join(out)
+
+
+def frontmatter(path):
+    """讀 SKILL.md／agent .md 的 name 與 description（簡單的 YAML frontmatter）。"""
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError:
+        return None, None
+    m = re.match(r"^---\s*\n(.*?)\n---", text, re.S)
+    if not m:
+        return None, None
+    name, desc, lines = None, None, m.group(1).splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("name:"):
+            name = line[5:].strip().strip("'\"")
+        elif line.startswith("description:"):
+            v = line[12:].strip()
+            if v in (">", "|", ">-", "|-", ">+", "|+", ""):
+                buf = []
+                while i + 1 < len(lines) and (lines[i + 1].startswith(" ") or not lines[i + 1].strip()):
+                    i += 1
+                    buf.append(lines[i].strip())
+                v = " ".join(b for b in buf if b)
+            desc = v.strip("'\"").replace('\\"', '"')
+        i += 1
+    return name, desc
+
+
+PLUGIN_INTRO = {
+    "mattpocock-skills": "工程流程技能：釐清需求（grill）、寫規格、拆票、TDD、除錯、重構架構",
+    "pstack": "Cursor 的 agent 工作法：架構草圖、平行比稿、影響範圍、驗證、寫作與設計原則",
+    "impeccable": "前端設計：設計、改版、審查、打磨網頁與介面",
+}
+
+
+def plugins():
+    """回傳 [(plugin id, [(技能, 說明)], [(agent, 說明)])]。"""
+    f = os.path.join(HOME, ".claude/plugins/installed_plugins.json")
+    try:
+        data = json.load(open(f))
+    except (OSError, ValueError):
+        return []
+    out = []
+    for pid, entries in sorted(data.get("plugins", {}).items()):
+        if not entries:
+            continue
+        root = entries[0].get("installPath", "")
+        skills, agents = [], []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d not in ("node_modules", ".git", "deprecated", "in-progress")]
+            if "SKILL.md" in filenames:
+                n, d = frontmatter(os.path.join(dirpath, "SKILL.md"))
+                skills.append((n or os.path.basename(dirpath), d or ""))
+            if dirpath == os.path.join(root, "agents"):
+                for fn in filenames:
+                    if fn.endswith(".md"):
+                        n, d = frontmatter(os.path.join(dirpath, fn))
+                        agents.append((n or fn[:-3], d or ""))
+        out.append((pid, sorted(set(skills)), sorted(set(agents))))
+    return out
+
+
+def mcp_servers():
+    try:
+        data = json.load(open(os.path.join(HOME, ".claude.json")))
+        return sorted(data.get("mcpServers", {}).keys())
+    except (OSError, ValueError):
+        return []
+
+
+def render():
+    o = []
+    who = f"工號 {USER}" if USER else "（未選工號）"
+    role = "admin" if ROLE == "admin" else "一般"
+    o.append(f"{B}{MAG}CDY_AGENT 說明{RST}  {DIM}{who}・{role}容器・按 q 離開、/ 搜尋、空白鍵翻頁{RST}")
+
+    o.append(h1("選單快捷鍵"))
+    o.append(rows([
+        ("↑ ↓ / j k", "移動"),
+        ("Enter / 1-9", "附接 session（踢掉其他端）"),
+        ("a", "多重附接（不踢人，大家看同一個畫面）"),
+        ("n", "新增 session（預設目錄：自己的工號資料夾）"),
+        ("x", "關閉選取的 session"),
+        ("s", "開一個不在 tmux 裡的 shell（exit 回選單）"),
+        ("u", "換工號"),
+        ("? / h", "這個說明頁"),
+        ("r", "重新整理"),
+    ]))
+
+    o.append(h1("tmux（session 裡）"))
+    o.append(rows([
+        ("Ctrl+B d", "離開 session 回選單（程式繼續跑）"),
+        ("Ctrl+B c", "開新視窗"),
+        ("Ctrl+B n / p", "下一個／上一個視窗"),
+        ("Ctrl+B % / \"", "左右／上下分割"),
+        ("Ctrl+B 方向鍵", "切換分割窗格"),
+        ("Ctrl+B s", "列出 session 切換"),
+        ("Ctrl+B [", "捲動／複製模式（q 離開）"),
+        ("Shift+滑鼠拖曳", "用瀏覽器選取文字再 Cmd/Ctrl+C 複製（Mac 不行試 Option）"),
+    ]))
+
+    o.append(h1("AI Agent"))
+    o.append(rows([
+        ("claude", "Claude Code（第一次要登入；大家共用同一個登入）"),
+        ("gemini", "Gemini CLI"),
+        ("codex", "OpenAI Codex CLI"),
+        ("claude --resume", "接續之前的對話"),
+    ]))
+
+    o.append(h1("Claude plugin 與技能"))
+    ps = plugins()
+    if not ps:
+        o.append(f"  {DIM}還沒裝好（容器剛啟動時會在背景安裝，log：~/.cache/agent-seed.log）{RST}")
+    for pid, skills, agents in ps:
+        intro = PLUGIN_INTRO.get(pid.split("@")[0], "")
+        o.append(f"\n  {B}{GRN}{pid}{RST}" + (f"  {intro}" if intro else ""))
+        if pid.endswith("-lsp@claude-plugins-official"):
+            o.append(f"    {DIM}語言伺服器：讓 Claude 能跳轉定義、找引用、看編譯錯誤{RST}")
+        if skills:
+            o.append(f"    {DIM}技能（在 claude 裡打 /技能名 使用，或描述需求讓它自動挑）{RST}")
+            o.append(rows([("/" + n, d) for n, d in skills], key_w=30, indent=4))
+        if agents:
+            o.append(f"    {DIM}subagent{RST}")
+            o.append(rows(agents, key_w=30, indent=4))
+
+    o.append(h1("MCP 伺服器"))
+    servers = mcp_servers()
+    o.append(rows([(s, "codegraph：把專案建成符號圖給 Claude 查；在專案目錄先跑 codegraph init" if s == "codegraph" else "") for s in servers] or [("（無）", "")]))
+
+    o.append(h1("語言與開發工具"))
+    o.append(rows([
+        ("node / npm", "Node 24；npm install -g 不需要 sudo"),
+        ("cargo / rustup", "Rust stable，含 clippy、rustfmt、rust-analyzer"),
+        ("go / gopls", "Go 與語言伺服器；module 快取在 ~/go"),
+        ("uv", "Python 版本與 venv：uv python install 3.12、uv venv、uv pip install"),
+        ("pyright", "Python 型別檢查與語言伺服器"),
+        ("tsc / typescript-language-server", "TypeScript"),
+        ("build-essential", "gcc、make、pkg-config、libssl-dev"),
+    ], key_w=30))
+
+    o.append(h1("常用工具"))
+    o.append(rows([
+        ("git", "版本控制"),
+        ("mr", "myrepos：一次對多個 repo 做 update／status／push"),
+        ("tokei", "統計程式碼行數（tokei . ）"),
+        ("rg / fd / fzf", "快速搜尋內容／檔名／模糊選擇"),
+        ("jq", "處理 JSON"),
+        ("nvim / vim", "編輯器"),
+        ("htop / tree", "看程序／目錄樹"),
+    ]))
+
+    o.append(h1("CDY_AGENT 指令"))
+    o.append(rows([
+        ("agent-git-setup", "設定自己工號的 git 名字／email 與 GitHub SSH 金鑰"),
+        ("agent-git-ssh -T git@github.com", "測試自己的 GitHub 金鑰（直接打 ssh 不會用到工號金鑰）"),
+        ("agent-help", "這個說明頁"),
+    ], key_w=34))
+
+    o.append(h1("目錄"))
+    dirs = [("/workspace/<工號>", "自己的工作目錄（NAS 上，大家看得到彼此的）"), ("~ (/home/dev)", "共用家目錄：Agent 登入、設定、快取")]
+    if ROLE == "admin":
+        dirs.insert(0, ("/repos", "admin 專用：所有 repo 的上層目錄（mr、tokei 管理）"))
+    o.append(rows(dirs))
+
+    o.append(h1("網路"))
+    o.append(rows([
+        ("可以連", "外網 HTTP/HTTPS、GitHub SSH（經 egress proxy，已自動設定）"),
+        ("連不到", "公司內網、NAS、其他私有網段；HTTP/HTTPS/SSH 以外的協定（資料庫、ping…）"),
+    ]))
+
+    o.append(h1("提醒"))
+    o.append("  ・所有工號在容器裡都是同一個帳號：彼此看得到檔案、也能附接別人的 session，請互相尊重。")
+    o.append("  ・程式碼請勤 git commit / push，這是防止 Agent 誤刪檔案最有效的保護。")
+    o.append("")
+    return "\n".join(o)
+
+
+def main():
+    text = render()
+    if sys.stdout.isatty() and shutil.which("less"):
+        subprocess.run(["less", "-R", "-S", "-K"], input=text.encode())
+    else:
+        print(text)
+
+
+if __name__ == "__main__":
+    main()

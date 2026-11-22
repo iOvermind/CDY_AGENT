@@ -80,6 +80,12 @@ Claude 的 marketplace 與 plugin 是**容器啟動時**由 `agent-seed` 補齊�
 憑證），log 在 `~/.cache/agent-seed.log`。`~/.claude/settings.json` 只在不存在時寫入預設值
 （繁體中文、dark theme、codegraph hook）。
 
+## 說明頁
+
+在選單按 `?`（或 `h`），或在 shell 裡打 `agent-help`：列出選單與 tmux 快捷鍵、三個 Agent、所有已安裝的
+Claude plugin 與技能（即時讀取實際安裝內容）、MCP、語言工具、常用工具、目錄與網路限制。用 less 顯示，
+`q` 離開、`/` 搜尋。
+
 ## 各工號自己的 git 身分
 
 每個工號可以用自己的 GitHub 帳號，同時使用互不干擾。在自己工號的 tmux session 裡執行一次：
