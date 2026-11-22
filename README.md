@@ -25,6 +25,13 @@ tmux 選單，在裡面用 Claude Code、Gemini CLI、Codex CLI。
   （`/path/to/tmux`）。
 - admin 選單列出所有工號的 session（標 `[工號]`），附接別人的一律多重附接、不踢人。附接進去後指令是在
   **同仁的 agent 容器裡**執行，那裡一樣看不到 `/repos`。
+- admin 的 GitHub 憑證：admin 容器另外掛 `/path/to/admin-ssh` 到 `~/.ssh`（蓋在共用家目錄上面），並用
+  `GIT_CONFIG_*` 環境變數把 `https://github.com/` 改走 SSH。SSH 經 egress proxy 走 `ssh.github.com:443`。
+  同仁的 agent 容器看不到這把 key，也沒有這個改寫。第一次設定：
+  ```sh
+  ssh-keygen -t ed25519 -C cdy-agent-admin     # 公鑰貼到 GitHub → Settings → SSH and GPG keys
+  ssh -T git@github.com                        # 第一次問指紋輸入 yes
+  ```
 - admin 密碼錯 3 次鎖 30 秒。真正擋人的是 Cloudflare Access：替 `/admin` 另建一個 Access Application
   （同網域、path 填 `admin`），只放 admin。
 
@@ -86,9 +93,10 @@ Claude 的 marketplace 與 plugin 是**容器啟動時**由 `agent-seed` 補齊�
 
 1. 第一次：建資料目錄並交給 3000:3000（tmux 目錄要 700）。
    ```sh
-   sudo mkdir -p /path/to/home /path/to/tmux /path/to/workspace
-   sudo chown -R 3000:3000 /path/to/home /path/to/tmux /path/to/workspace
-   sudo chmod 700 /path/to/tmux
+   sudo mkdir -p /path/to/home /path/to/workspace
+   sudo chown -R 3000:3000 /path/to/home /path/to/workspace
+   # tmux socket、admin 專用 ~/.ssh、共用家目錄的 ~/.ssh（先建好，免得 Docker 建成 root 的掛載點）
+   sudo install -d -o 3000 -g 3000 -m 700 /path/to/tmux /path/to/admin-ssh /path/to/home/.ssh
    ```
 2. 在 Dockhand 貼 [`compose.hub.yaml`](compose.hub.yaml)，填 `TUNNEL_TOKEN`，視需要修改 `AGENT_USERS`。
 3. Cloudflare：Tunnel 設兩條 public hostname（見上方「工號與 admin」），Access 分別替 `/` 與 `/admin` 設定誰能進來。

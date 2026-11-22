@@ -3,7 +3,8 @@
 #   TUNNEL_TOKEN         Cloudflare Zero Trust → Networks → Tunnels 拿到的權杖
 #   ADMIN_PASSWORD_HASH  admin 密碼雜湊，在 NAS 上用 `openssl passwd -6 | base64 -w0` 產生
 #
-# volumes 裡的 /path/to/... 換成實際的 host 路徑；目錄要先建好並交給 3000:3000（tmux 目錄要 700）。
+# volumes 裡的 /path/to/... 換成實際的 host 路徑；目錄要先建好並交給 3000:3000
+# （tmux、admin-ssh、home/.ssh 要 700）。
 #
 # 同一個網域、兩個入口（Tunnel 的 public hostname 設兩條，/admin 那條排前面）：
 #   https://<網域>/admin*  → http://admin:7681   Access 只放 admin
@@ -67,12 +68,19 @@ services:
       TTYD_BASE_PATH: /admin
       TZ: Asia/Taipei
       TTYD_CREDENTIAL: ""
+      # 只在 admin 容器把 https://github.com/ 改走 SSH（用下面 admin-ssh 裡的 key）。
+      # 同仁的 agent 容器沒有這個設定，也看不到這把 key。
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: url.git@github.com:.insteadOf
+      GIT_CONFIG_VALUE_0: https://github.com/
     volumes:
       # 放所有 repo 的上層目錄，用 mr、tokei 管理各 repo。只有 admin 容器有。
       - /path/to/repos:/repos
       - /path/to/workspace:/workspace
       - /path/to/home:/home/dev
       - /path/to/tmux:/tmp/tmux-3000
+      # admin 專用的 ~/.ssh，蓋在共用家目錄上面。GitHub 的 SSH key 放這裡，同仁拿不到。
+      - /path/to/admin-ssh:/home/dev/.ssh
     expose:
       - "7681"
     networks:
