@@ -1,17 +1,63 @@
 #!/usr/bin/env bash
-# ttyd 進來的第一層：輸入工號。只接受 AGENT_USERS 裡的值（不分大小寫），通過後進該工號的
-# tmux 選單；選單裡選「換工號」會回到這裡。
+# ttyd 進來的第一層：輸入工號。
 #
-# 這是「軟區分」：防止大家搶同一個畫面，不是權限控管。真正的門在 Cloudflare Access。
+#   AGENT_USERS   一般工號，逗號分隔。輸入後直接進該工號的 tmux 選單。
+#   AGENT_ADMINS  admin 工號，逗號分隔。輸入後還要密碼（比對 AGENT_ADMIN_PASSWORD_HASH），
+#                 通過後進 admin 選單：看得到所有工號的 session，預設目錄是 AGENT_ADMIN_HOME。
+#
+# 工號不分大小寫。選單裡選「換工號」會回到這裡。
+#
+# 這是「軟區分」：防止大家搶同一個畫面、防止一般同仁隨手進 admin，不是權限控管——
+# 所有人在容器裡都是同一個 Linux 帳號 dev。真正的門在 Cloudflare Access。
 set -uo pipefail
 
-declare -A allowed=()
-IFS=',' read -r -a users <<< "${AGENT_USERS:-}"
-for raw in "${users[@]}"; do
-  u="$(printf '%s' "$raw" | tr -d '[:space:]')"
-  [[ "$u" =~ ^[A-Za-z0-9_-]+$ ]] || continue
-  allowed["${u^^}"]="$u"
-done
+declare -A users=() admins=()
+
+load_ids() { # load_ids <陣列名稱> <逗號分隔字串>
+  local -n dest="$1"
+  local raw u
+  local -a list
+  IFS=',' read -r -a list <<< "$2"
+  for raw in "${list[@]}"; do
+    u="$(printf '%s' "$raw" | tr -d '[:space:]')"
+    [[ "$u" =~ ^[A-Za-z0-9_-]+$ ]] || continue
+    dest["${u^^}"]="$u"
+  done
+}
+load_ids users "${AGENT_USERS:-}"
+load_ids admins "${AGENT_ADMINS:-}"
+
+# 比對 SHA-512 crypt 雜湊（`openssl passwd -6` 產生的 $6$<salt>$<hash>）。
+verify_password() {
+  local hash="${AGENT_ADMIN_PASSWORD_HASH:-}" salt got
+  [[ "$hash" == '$6$'*'$'* ]] || return 1
+  salt="${hash#\$6\$}"
+  salt="${salt%%\$*}"
+  got="$(printf '%s' "$1" | openssl passwd -6 -salt "$salt" -stdin 2>/dev/null)" || return 1
+  [ "$got" = "$hash" ]
+}
+
+# 回傳 0 表示通過。錯 3 次鎖 30 秒後回到輸入工號。
+admin_auth() {
+  if [ -z "${AGENT_ADMIN_PASSWORD_HASH:-}" ]; then
+    printf '\033[31m尚未設定 admin 密碼（AGENT_ADMIN_PASSWORD_HASH），admin 無法登入。\033[0m\n'
+    sleep 3
+    return 1
+  fi
+  local tries pw
+  for tries in 1 2 3; do
+    read -r -s -p '請輸入 admin 密碼：' pw || return 1
+    echo
+    if verify_password "$pw"; then
+      return 0
+    fi
+    printf '\033[33m密碼錯誤（%d/3）。\033[0m\n' "$tries"
+    sleep 1
+  done
+  printf '\033[31m錯誤太多次，鎖定 30 秒。\033[0m\n'
+  sleep 30
+  return 1
+}
 
 # Ctrl+C 只清掉這一行輸入，不要讓 ttyd 整個斷線。
 trap 'echo' INT
@@ -20,7 +66,7 @@ fails=0
 while true; do
   printf '\033[2J\033[H'
   printf '\033[36m══ CDY_AGENT ══\033[0m\n\n'
-  if [ "${#allowed[@]}" -eq 0 ]; then
+  if [ "${#users[@]}" -eq 0 ] && [ "${#admins[@]}" -eq 0 ]; then
     printf '\033[31m尚未設定任何工號（AGENT_USERS 是空的），請聯絡管理者。\033[0m\n'
     sleep 30
     continue
@@ -30,9 +76,17 @@ while true; do
   key="$(printf '%s' "$input" | tr -d '[:space:]')"
   key="${key^^}"
 
-  if [ -n "$key" ] && [ -n "${allowed[$key]:-}" ]; then
+  if [ -n "$key" ] && [ -n "${admins[$key]:-}" ]; then
+    if admin_auth; then
+      fails=0
+      /usr/local/bin/agent-selector --admin "${admins[$key]}"
+    fi
+    continue
+  fi
+
+  if [ -n "$key" ] && [ -n "${users[$key]:-}" ]; then
     fails=0
-    /usr/local/bin/agent-selector "${allowed[$key]}"
+    /usr/local/bin/agent-selector "${users[$key]}"
     continue
   fi
 

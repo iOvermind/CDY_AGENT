@@ -39,10 +39,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         jq \
         less \
         libssl-dev \
+        myrepos \
         ncurses-term \
         neovim \
         netcat-openbsd \
         openssh-client \
+        openssl \
         pkg-config \
         procps \
         python3 \
@@ -95,6 +97,11 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile min
         --default-toolchain stable --component rust-analyzer,clippy,rustfmt \
     && rustup --version && rust-analyzer --version
 
+# tokei（程式碼行數統計）。官方沒有提供 Linux 執行檔，用 cargo 編；編完把 registry 快取清掉。
+RUN cargo install --locked tokei \
+    && rm -rf "${CARGO_HOME}/registry" "${CARGO_HOME}/git" \
+    && tokei --version
+
 # gopls 裝到 /opt/go-tools/bin；建置用的 GOPATH 與快取丟到 /tmp，不留在 image 裡。
 RUN GOBIN=/opt/go-tools/bin GOPATH=/tmp/gopath GOCACHE=/tmp/gocache \
         go install golang.org/x/tools/gopls@latest \
@@ -125,7 +132,8 @@ ENV HTTP_PROXY=http://egress:3128 \
     NO_PROXY=localhost,127.0.0.1,::1,agent,egress \
     no_proxy=localhost,127.0.0.1,::1,agent,egress \
     NODE_USE_ENV_PROXY=1 \
-    AGENT_SSH_PROXY=egress:3128
+    AGENT_SSH_PROXY=egress:3128 \
+    AGENT_ADMIN_HOME=/repos
 
 EXPOSE 7681
 

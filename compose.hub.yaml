@@ -15,12 +15,20 @@ services:
     environment:
       # 可登入的工號，逗號分隔。改完重新部署即可（workspace/<工號> 會自動建立）。
       AGENT_USERS: "USER1,USER2"
+      # admin 工號，逗號分隔。輸入後要密碼，進去看得到所有工號的 session，預設目錄是 /repos。
+      AGENT_ADMINS: "A00001"
+      # admin 密碼的雜湊（openssl passwd -6 產生）。compose 裡的 $ 要寫成 $$，所以產生時直接轉好。
+      # 留空的話 admin 無法登入。
+      AGENT_ADMIN_PASSWORD_HASH: ''
       TZ: Asia/Taipei
       # ttyd 的第二道帳密（user:password）。留空就不啟用，控管交給 Cloudflare Access。
       TTYD_CREDENTIAL: ""
     volumes:
       # 同仁的程式碼：/workspace/<工號>
       - /path/to/workspace:/workspace
+      # admin 的預設目錄（放所有 repo 的上層目錄，用 mr、tokei 管理各 repo）。
+      # 注意：一般工號在容器裡一樣讀寫得到這裡（軟區分）。
+      - /path/to/repos:/repos
       # Agent 登入憑證、plugin、個人設定、uv/cargo/go 的快取
       - /path/to/home:/home/dev
     expose:

@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """工號專屬的 tmux session 選擇器。
 
-用法：agent-selector <工號>
+用法：agent-selector [--admin] <工號>
 
 每個工號一個獨立的 tmux socket（tmux -L sock_<工號>），彼此看不到對方的 session。
 新 session 的工作目錄預設是 /workspace/<工號>。在 tmux 裡按 Ctrl+B d 會回到這個選單；
 選單按 u 換工號（結束程式，回到 agent-login）。
+
+--admin：預設目錄改成 AGENT_ADMIN_HOME（預設 /repos），選單除了自己的 session，也列出其他
+工號的 session（標註是誰的）。附接別人的 session 一律是多重附接，不會把對方踢掉。
 
 移植自 ttyd-tmux-selector（Mac 版），差別是 socket 依工號分開、預設目錄與「換工號」。
 """
@@ -20,6 +23,8 @@ import unicodedata
 
 TMUX_BIN = "tmux"
 WORKSPACE_ROOT = os.environ.get("AGENT_WORKSPACE_ROOT", "/workspace")
+ADMIN_HOME = os.environ.get("AGENT_ADMIN_HOME", "/repos")
+SOCKET_DIR = os.path.join(os.environ.get("TMUX_TMPDIR", "/tmp"), f"tmux-{os.getuid()}")
 
 try:
     locale.setlocale(locale.LC_ALL, "")
@@ -59,10 +64,10 @@ def safe_session_name(name):
 
 
 class Tmux:
-    def __init__(self, user):
+    def __init__(self, user, home_dir=None):
         self.user = user
         self.socket = f"sock_{user}"
-        self.home_dir = os.path.join(WORKSPACE_ROOT, user)
+        self.home_dir = home_dir or os.path.join(WORKSPACE_ROOT, user)
 
     def cmd(self, *args):
         return [TMUX_BIN, "-L", self.socket, *args]
@@ -93,10 +98,13 @@ class Tmux:
                 continue
             parts = (line.split("\t") + [""] * 6)[:6]
             name, windows, attached, win_name, cmd, path = parts
-            if path.startswith(WORKSPACE_ROOT + "/"):
-                path = path[len(WORKSPACE_ROOT) + 1 :]
+            for root in (WORKSPACE_ROOT, ADMIN_HOME):
+                if path.startswith(root + "/"):
+                    path = path[len(root) + 1 :]
+                    break
             out.append(
                 {
+                    "tmux": self,
                     "name": name,
                     "windows": windows,
                     "attached": int(attached) if attached.isdigit() else 0,
@@ -120,6 +128,40 @@ class Tmux:
         if not lines:
             return ["(空白畫面)"]
         return [truncate_and_pad(l.expandtabs(4), max_cols, pad=False) for l in lines[-max_lines:]]
+
+
+class View:
+    """選單要列出的 session：自己的，admin 另外加上其他工號的。"""
+
+    def __init__(self, me, admin=False):
+        self.me = me
+        self.admin = admin
+
+    def others(self):
+        if not self.admin:
+            return []
+        try:
+            names = sorted(os.listdir(SOCKET_DIR))
+        except OSError:
+            return []
+        out = []
+        for n in names:
+            if not n.startswith("sock_"):
+                continue
+            user = n[len("sock_") :]
+            if user == self.me.user or not re.fullmatch(r"[A-Za-z0-9_-]+", user):
+                continue
+            out.append(Tmux(user))
+        return out
+
+    def sessions(self):
+        items = self.me.sessions()
+        for t in self.others():
+            items.extend(t.sessions())
+        return items
+
+    def own(self, sessions):
+        return [s for s in sessions if s["tmux"] is self.me]
 
 
 def prompt_string(stdscr, prompt_text, default_val=""):
@@ -178,7 +220,8 @@ def ask_new_name(stdscr, sessions):
     return safe_session_name(raw) if raw else ""
 
 
-def selector_ui(stdscr, tmux):
+def selector_ui(stdscr, view):
+    tmux = view.me
     curses.curs_set(0)
     stdscr.timeout(1500)
     if curses.has_colors():
@@ -193,7 +236,7 @@ def selector_ui(stdscr, tmux):
     selected = 0
 
     while True:
-        sessions = tmux.sessions()
+        sessions = view.sessions()
         total_items = len(sessions) + 1
         if selected >= total_items:
             selected = max(0, total_items - 1)
@@ -204,10 +247,11 @@ def selector_ui(stdscr, tmux):
             stdscr.refresh()
             ch = stdscr.getch()
             if ch in (curses.KEY_ENTER, 10, 13) and sessions:
-                return ("attach", sessions[0]["name"], False)
+                return ("attach", sessions[0], False)
             continue
 
-        title = f" CDY_AGENT ─ 工號 {tmux.user} 的 Tmux Session "
+        role = "admin " if view.admin else ""
+        title = f" CDY_AGENT ─ {role}工號 {tmux.user} 的 Tmux Session "
         subtitle = " ↑/↓/j/k:移動 | Enter:附接(踢除其他端) | a:多重附接 | 1-9:快選 | n:新增 | x:關閉 | s:shell | u:換工號 | r:重整 "
         try:
             stdscr.addstr(0, 0, "═" * (w - 1), curses.color_pair(1))
@@ -240,7 +284,8 @@ def selector_ui(stdscr, tmux):
                 s = sessions[idx]
                 num_str = f"{idx + 1}." if idx < 9 else "  "
                 att_str = f"●{s['attached']}連線" if s["attached"] > 0 else "○閒置"
-                name_col = truncate_and_pad(s["name"], 14, pad=True)
+                label = s["name"] if s["tmux"] is tmux else f"[{s['tmux'].user}] {s['name']}"
+                name_col = truncate_and_pad(label, 20 if view.admin else 14, pad=True)
                 line = f" {num_str:<2} {name_col} [{s['windows']}窗] {att_str} ({s['cmd']})"
             else:
                 line = " +  [ 建立新的 Tmux Session... ]"
@@ -257,7 +302,8 @@ def selector_ui(stdscr, tmux):
                     pass
             if selected < len(sessions):
                 s = sessions[selected]
-                hdr = f" 預覽: {s['name']} — 視窗: {s['win_name']} ({s['path']}) "
+                owner = "" if s["tmux"] is tmux else f"{s['tmux'].user} 的 "
+                hdr = f" 預覽: {owner}{s['name']} — 視窗: {s['win_name']} ({s['path']}) "
                 try:
                     stdscr.addstr(
                         body_top,
@@ -267,7 +313,7 @@ def selector_ui(stdscr, tmux):
                     )
                 except curses.error:
                     pass
-                for i, pline in enumerate(tmux.preview(s["name"], max_lines=body_h - 2, max_cols=right_w - 3)):
+                for i, pline in enumerate(s["tmux"].preview(s["name"], max_lines=body_h - 2, max_cols=right_w - 3)):
                     py = body_top + 1 + i
                     if py >= body_bottom:
                         break
@@ -303,25 +349,26 @@ def selector_ui(stdscr, tmux):
         elif ord("1") <= ch <= ord("9"):
             num_idx = ch - ord("1")
             if num_idx < len(sessions):
-                return ("attach", sessions[num_idx]["name"], True)
+                return ("attach", sessions[num_idx], True)
         elif ch in (curses.KEY_ENTER, 10, 13, ord("d"), ord("D")):
             if selected < len(sessions):
-                return ("attach", sessions[selected]["name"], True)
-            new_name = ask_new_name(stdscr, sessions)
+                return ("attach", sessions[selected], True)
+            new_name = ask_new_name(stdscr, view.own(sessions))
             if new_name:
                 return ("new", new_name, True)
         elif ch in (ord("a"), ord("A")):
             if selected < len(sessions):
-                return ("attach", sessions[selected]["name"], False)
+                return ("attach", sessions[selected], False)
         elif ch in (ord("n"), ord("N"), ord("+")):
-            new_name = ask_new_name(stdscr, sessions)
+            new_name = ask_new_name(stdscr, view.own(sessions))
             if new_name:
                 return ("new", new_name, True)
         elif ch in (ord("x"), ord("X")):
             if selected < len(sessions):
-                target = sessions[selected]["name"]
-                if confirm_prompt(stdscr, f"確定要關閉刪除 session '{target}' 嗎？"):
-                    tmux.run("kill-session", "-t", target, capture_output=True)
+                s = sessions[selected]
+                owner = "" if s["tmux"] is tmux else f"{s['tmux'].user} 的 "
+                if confirm_prompt(stdscr, f"確定要關閉刪除 {owner}session '{s['name']}' 嗎？"):
+                    s["tmux"].run("kill-session", "-t", s["name"], capture_output=True)
         elif ch in (ord("r"), ord("R")):
             continue
         elif ch in (ord("s"), ord("S")):
@@ -331,13 +378,21 @@ def selector_ui(stdscr, tmux):
 
 
 def main():
-    if len(sys.argv) < 2 or not re.fullmatch(r"[A-Za-z0-9_-]+", sys.argv[1]):
-        print("用法：agent-selector <工號>", file=sys.stderr)
+    args = sys.argv[1:]
+    admin = "--admin" in args
+    args = [a for a in args if a != "--admin"]
+    if len(args) != 1 or not re.fullmatch(r"[A-Za-z0-9_-]+", args[0]):
+        print("用法：agent-selector [--admin] <工號>", file=sys.stderr)
         sys.exit(2)
 
-    user = sys.argv[1]
-    tmux = Tmux(user)
-    os.makedirs(tmux.home_dir, exist_ok=True)
+    user = args[0]
+    if admin:
+        home = ADMIN_HOME if os.path.isdir(ADMIN_HOME) else WORKSPACE_ROOT
+        tmux = Tmux(user, home_dir=home)
+    else:
+        tmux = Tmux(user)
+        os.makedirs(tmux.home_dir, exist_ok=True)
+    view = View(tmux, admin=admin)
     os.environ["AGENT_USER"] = user
 
     if not sys.stdin.isatty():
@@ -347,7 +402,7 @@ def main():
     failures = 0
     while True:
         try:
-            action, target, detach_others = curses.wrapper(selector_ui, tmux)
+            action, target, detach_others = curses.wrapper(selector_ui, view)
             failures = 0
         except KeyboardInterrupt:
             continue
@@ -363,10 +418,12 @@ def main():
         sys.stdout.flush()
 
         if action == "attach":
+            owner = target["tmux"]
             args = ["attach-session"]
-            if detach_others:
+            # 別人的 session 一律多重附接，不把對方踢掉。
+            if detach_others and owner is tmux:
                 args.append("-d")
-            tmux.run(*args, "-t", target)
+            owner.run(*args, "-t", target["name"])
         elif action == "new":
             args = ["new-session", "-A"]
             if detach_others:

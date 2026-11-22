@@ -20,7 +20,7 @@ command -v docker >/dev/null 2>&1 || die '找不到 docker。'
 docker info >/dev/null 2>&1 || die 'Docker 裝了但連不上 daemon。'
 
 # 資料目錄先建好再交給 Docker，免得被建成 root 擁有的空目錄。
-mkdir -p "$ROOT/data/workspace" "$ROOT/data/home"
+mkdir -p "$ROOT/data/workspace" "$ROOT/data/home" "$ROOT/data/repos"
 
 say "建置 ${EGRESS_IMAGE}……"
 docker build --tag "$EGRESS_IMAGE" "$ROOT/egress"
