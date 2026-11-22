@@ -3,6 +3,8 @@
 #   TUNNEL_TOKEN         Cloudflare Zero Trust → Networks → Tunnels 拿到的權杖
 #   ADMIN_PASSWORD_HASH  admin 密碼雜湊，在 NAS 上用 `openssl passwd -6 | base64 -w0` 產生
 #
+# volumes 裡的 /path/to/... 換成實際的 host 路徑；目錄要先建好並交給 3000:3000（tmux 目錄要 700）。
+#
 # 同一個網域、兩個入口（Tunnel 的 public hostname 設兩條，/admin 那條排前面）：
 #   https://<網域>/admin*  → http://admin:7681   Access 只放 admin
 #   https://<網域>/        → http://agent:7681   Access 放同仁
@@ -59,7 +61,7 @@ services:
     environment:
       AGENT_ROLE: admin
       # admin 工號，逗號分隔。輸入後要密碼，進去看得到所有工號的 session，預設目錄是 /repos。
-      AGENT_ADMINS: "USER1"
+      AGENT_ADMINS: "A00001"
       AGENT_ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
       # 跑在同一個網域的 /admin 底下。
       TTYD_BASE_PATH: /admin

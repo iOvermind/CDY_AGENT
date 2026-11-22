@@ -86,8 +86,8 @@ Claude 的 marketplace 與 plugin 是**容器啟動時**由 `agent-seed` 補齊�
 
 1. 第一次：建資料目錄並交給 3000:3000（tmux 目錄要 700）。
    ```sh
-   sudo mkdir -p /path/to/home /path/to/tmux
-   sudo chown -R 3000:3000 /path/to /path/to/workspace
+   sudo mkdir -p /path/to/home /path/to/tmux /path/to/workspace
+   sudo chown -R 3000:3000 /path/to/home /path/to/tmux /path/to/workspace
    sudo chmod 700 /path/to/tmux
    ```
 2. 在 Dockhand 貼 [`compose.hub.yaml`](compose.hub.yaml)，填 `TUNNEL_TOKEN`，視需要修改 `AGENT_USERS`。
