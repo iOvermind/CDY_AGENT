@@ -77,6 +77,10 @@ RUN userdel -r node \
     && mkdir -p /opt/npm-global /opt/rust /opt/go-tools /opt/agent /workspace \
     && chown -R dev:dev /opt/npm-global /opt/rust /opt/go-tools /workspace
 
+# tmux 開的是 login shell，Debian 的 /etc/profile 會把 PATH 重設成系統預設、蓋掉上面 ENV 的
+# PATH（claude、cargo、go 都會找不到）。在 profile.d 補回同一份 PATH。
+RUN printf 'export PATH="%s"\n' "${PATH}" > /etc/profile.d/00-agent-path.sh
+
 COPY --chmod=755 rootfs/usr/local/bin/ /usr/local/bin/
 COPY --chmod=644 rootfs/etc/tmux.conf /etc/tmux.conf
 COPY --chmod=644 rootfs/etc/ssh/ssh_config.d/ /etc/ssh/ssh_config.d/
