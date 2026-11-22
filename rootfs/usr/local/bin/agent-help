@@ -86,6 +86,21 @@ PLUGIN_INTRO = {
 }
 
 
+def load_zh():
+    try:
+        return json.load(open("/opt/agent/skills-zh.json", encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+ZH = load_zh()
+
+
+def zh(plugin, name, desc):
+    """有中文對照就用中文，沒有就用原文。"""
+    return ZH.get(f"{plugin}/{name}", desc)
+
+
 def plugins():
     """回傳 [(plugin id, [(技能, 說明)], [(agent, 說明)])]。"""
     f = os.path.join(HOME, ".claude/plugins/installed_plugins.json")
@@ -109,6 +124,9 @@ def plugins():
                     if fn.endswith(".md"):
                         n, d = frontmatter(os.path.join(dirpath, fn))
                         agents.append((n or fn[:-3], d or ""))
+        p = pid.split("@")[0]
+        skills = [(n, zh(p, n, d)) for n, d in skills]
+        agents = [(n, zh(p, n, d)) for n, d in agents]
         out.append((pid, sorted(set(skills)), sorted(set(agents))))
     return out
 

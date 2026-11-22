@@ -86,6 +86,9 @@ Claude 的 marketplace 與 plugin 是**容器啟動時**由 `agent-seed` 補齊�
 Claude plugin 與技能（即時讀取實際安裝內容）、MCP、語言工具、常用工具、目錄與網路限制。用 less 顯示，
 `q` 離開、`/` 搜尋。
 
+技能說明的中文對照在 [`skills-zh.json`](skills-zh.json)（key 是 `plugin名稱/技能名稱`）。plugin 更新後多出來、
+還沒翻譯的技能會顯示原文，補進這個檔案即可。
+
 ## 各工號自己的 git 身分
 
 每個工號可以用自己的 GitHub 帳號，同時使用互不干擾。在自己工號的 tmux session 裡執行一次：

@@ -86,7 +86,7 @@ RUN printf 'export PATH="%s"\n' "${PATH}" > /etc/profile.d/00-agent-path.sh
 COPY --chmod=755 rootfs/usr/local/bin/ /usr/local/bin/
 COPY --chmod=644 rootfs/etc/tmux.conf /etc/tmux.conf
 COPY --chmod=644 rootfs/etc/ssh/ssh_config.d/ /etc/ssh/ssh_config.d/
-COPY --chmod=644 plugins.txt claude-settings.json /opt/agent/
+COPY --chmod=644 plugins.txt claude-settings.json skills-zh.json /opt/agent/
 
 USER dev
 WORKDIR /workspace
