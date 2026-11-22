@@ -1,0 +1,383 @@
+#!/usr/bin/env python3
+"""工號專屬的 tmux session 選擇器。
+
+用法：agent-selector <工號>
+
+每個工號一個獨立的 tmux socket（tmux -L sock_<工號>），彼此看不到對方的 session。
+新 session 的工作目錄預設是 /workspace/<工號>。在 tmux 裡按 Ctrl+B d 會回到這個選單；
+選單按 u 換工號（結束程式，回到 agent-login）。
+
+移植自 ttyd-tmux-selector（Mac 版），差別是 socket 依工號分開、預設目錄與「換工號」。
+"""
+import curses
+import locale
+import os
+import re
+import subprocess
+import sys
+import time
+import unicodedata
+
+TMUX_BIN = "tmux"
+WORKSPACE_ROOT = os.environ.get("AGENT_WORKSPACE_ROOT", "/workspace")
+
+try:
+    locale.setlocale(locale.LC_ALL, "")
+except locale.Error:
+    pass
+
+
+def char_width(ch):
+    if unicodedata.combining(ch):
+        return 0
+    return 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+
+
+def str_width(s):
+    return sum(char_width(c) for c in s)
+
+
+def truncate_and_pad(s, target_width, pad=True):
+    """把字串截到 target_width 個終端機欄寬，必要時右側補空白。"""
+    out = []
+    cur_w = 0
+    for ch in s:
+        cw = char_width(ch)
+        if cur_w + cw > target_width:
+            break
+        out.append(ch)
+        cur_w += cw
+    if pad and cur_w < target_width:
+        out.append(" " * (target_width - cur_w))
+    return "".join(out)
+
+
+def safe_session_name(name):
+    """tmux 的 session 名稱不能有 . 和 :，其餘空白等也一併換掉。"""
+    name = re.sub(r"[^\w-]", "-", name.strip(), flags=re.UNICODE)
+    return name.strip("-")[:40]
+
+
+class Tmux:
+    def __init__(self, user):
+        self.user = user
+        self.socket = f"sock_{user}"
+        self.home_dir = os.path.join(WORKSPACE_ROOT, user)
+
+    def cmd(self, *args):
+        return [TMUX_BIN, "-L", self.socket, *args]
+
+    def run(self, *args, **kw):
+        return subprocess.run(self.cmd(*args), **kw)
+
+    def sessions(self):
+        fmt = "\t".join(
+            [
+                "#{session_name}",
+                "#{session_windows}",
+                "#{session_attached}",
+                "#{window_name}",
+                "#{pane_current_command}",
+                "#{pane_current_path}",
+            ]
+        )
+        try:
+            res = self.run("list-sessions", "-F", fmt, capture_output=True, text=True, timeout=2)
+        except Exception:
+            return []
+        if res.returncode != 0:
+            return []
+        out = []
+        for line in res.stdout.strip().splitlines():
+            if not line.strip():
+                continue
+            parts = (line.split("\t") + [""] * 6)[:6]
+            name, windows, attached, win_name, cmd, path = parts
+            if path.startswith(WORKSPACE_ROOT + "/"):
+                path = path[len(WORKSPACE_ROOT) + 1 :]
+            out.append(
+                {
+                    "name": name,
+                    "windows": windows,
+                    "attached": int(attached) if attached.isdigit() else 0,
+                    "win_name": win_name,
+                    "cmd": cmd,
+                    "path": path,
+                }
+            )
+        return out
+
+    def preview(self, session_name, max_lines=40, max_cols=120):
+        try:
+            res = self.run("capture-pane", "-p", "-t", session_name, capture_output=True, text=True, timeout=1)
+        except Exception:
+            return ["(無法預覽畫面)"]
+        if res.returncode != 0:
+            return ["(無法預覽畫面)"]
+        lines = res.stdout.splitlines()
+        while lines and not lines[-1].strip():
+            lines.pop()
+        if not lines:
+            return ["(空白畫面)"]
+        return [truncate_and_pad(l.expandtabs(4), max_cols, pad=False) for l in lines[-max_lines:]]
+
+
+def prompt_string(stdscr, prompt_text, default_val=""):
+    curses.echo()
+    curses.curs_set(1)
+    stdscr.timeout(-1)
+    h, w = stdscr.getmaxyx()
+    stdscr.move(h - 2, 0)
+    stdscr.clrtoeol()
+    full_prompt = f" {prompt_text}"
+    if default_val:
+        full_prompt += f" (預設: {default_val})"
+    full_prompt += ": "
+    prompt_disp = truncate_and_pad(full_prompt, w - 15, pad=False)
+    try:
+        stdscr.addstr(h - 2, 0, prompt_disp, curses.A_BOLD)
+        stdscr.refresh()
+        inp = stdscr.getstr(h - 2, str_width(prompt_disp), 40)
+        val = inp.decode("utf-8", errors="ignore").strip()
+    except Exception:
+        val = ""
+    finally:
+        curses.noecho()
+        curses.curs_set(0)
+        stdscr.timeout(1500)
+    return val if val else default_val
+
+
+def confirm_prompt(stdscr, prompt_text):
+    stdscr.timeout(-1)
+    h, w = stdscr.getmaxyx()
+    stdscr.move(h - 2, 0)
+    stdscr.clrtoeol()
+    msg = truncate_and_pad(f" {prompt_text} [y/N]: ", w - 2, pad=False)
+    try:
+        stdscr.addstr(h - 2, 0, msg, curses.A_BOLD | curses.color_pair(4))
+        stdscr.refresh()
+        ch = stdscr.getch()
+        return ch in (ord("y"), ord("Y"))
+    finally:
+        stdscr.timeout(1500)
+
+
+def next_default_name(sessions):
+    names = {s["name"] for s in sessions}
+    if "main" not in names:
+        return "main"
+    i = len(sessions) + 1
+    while f"work-{i}" in names:
+        i += 1
+    return f"work-{i}"
+
+
+def ask_new_name(stdscr, sessions):
+    raw = prompt_string(stdscr, "請輸入新 Session 名稱", next_default_name(sessions))
+    return safe_session_name(raw) if raw else ""
+
+
+def selector_ui(stdscr, tmux):
+    curses.curs_set(0)
+    stdscr.timeout(1500)
+    if curses.has_colors():
+        curses.start_color()
+        curses.use_default_colors()
+        curses.init_pair(1, curses.COLOR_CYAN, -1)  # 標題、框線
+        curses.init_pair(2, curses.COLOR_GREEN, -1)  # 連線中
+        curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_CYAN)  # 選取列
+        curses.init_pair(4, curses.COLOR_YELLOW, -1)  # 提示、警告
+        curses.init_pair(5, curses.COLOR_WHITE, -1)  # 一般文字
+
+    selected = 0
+
+    while True:
+        sessions = tmux.sessions()
+        total_items = len(sessions) + 1
+        if selected >= total_items:
+            selected = max(0, total_items - 1)
+
+        stdscr.erase()
+        h, w = stdscr.getmaxyx()
+        if h < 6 or w < 20:
+            stdscr.refresh()
+            ch = stdscr.getch()
+            if ch in (curses.KEY_ENTER, 10, 13) and sessions:
+                return ("attach", sessions[0]["name"], False)
+            continue
+
+        title = f" CDY_AGENT ─ 工號 {tmux.user} 的 Tmux Session "
+        subtitle = " ↑/↓/j/k:移動 | Enter:附接(踢除其他端) | a:多重附接 | 1-9:快選 | n:新增 | x:關閉 | s:shell | u:換工號 | r:重整 "
+        try:
+            stdscr.addstr(0, 0, "═" * (w - 1), curses.color_pair(1))
+            stdscr.addstr(0, 2, truncate_and_pad(title, w - 4, pad=False), curses.color_pair(1) | curses.A_BOLD)
+            stdscr.addstr(1, 0, truncate_and_pad(subtitle, w - 1, pad=False), curses.color_pair(4))
+            stdscr.addstr(2, 0, "─" * (w - 1), curses.color_pair(1))
+        except curses.error:
+            pass
+
+        body_top = 3
+        body_bottom = h - 3
+        body_h = max(1, body_bottom - body_top)
+
+        if w >= 88:
+            left_w = min(48, w // 2)
+            right_x = left_w + 1
+            right_w = w - right_x - 1
+        else:
+            left_w = w - 1
+            right_x = 0
+            right_w = 0
+
+        for idx in range(total_items):
+            row_y = body_top + idx
+            if row_y >= body_bottom:
+                break
+            is_sel = idx == selected
+            attr = curses.color_pair(3) | curses.A_BOLD if is_sel else curses.color_pair(5)
+            if idx < len(sessions):
+                s = sessions[idx]
+                num_str = f"{idx + 1}." if idx < 9 else "  "
+                att_str = f"●{s['attached']}連線" if s["attached"] > 0 else "○閒置"
+                name_col = truncate_and_pad(s["name"], 14, pad=True)
+                line = f" {num_str:<2} {name_col} [{s['windows']}窗] {att_str} ({s['cmd']})"
+            else:
+                line = " +  [ 建立新的 Tmux Session... ]"
+            try:
+                stdscr.addstr(row_y, 0, truncate_and_pad(line, left_w - 1, pad=True), attr)
+            except curses.error:
+                pass
+
+        if right_w > 10:
+            for ry in range(body_top, body_bottom):
+                try:
+                    stdscr.addstr(ry, left_w, "│", curses.color_pair(1))
+                except curses.error:
+                    pass
+            if selected < len(sessions):
+                s = sessions[selected]
+                hdr = f" 預覽: {s['name']} — 視窗: {s['win_name']} ({s['path']}) "
+                try:
+                    stdscr.addstr(
+                        body_top,
+                        right_x + 1,
+                        truncate_and_pad(hdr, right_w - 2, pad=False),
+                        curses.color_pair(4) | curses.A_BOLD,
+                    )
+                except curses.error:
+                    pass
+                for i, pline in enumerate(tmux.preview(s["name"], max_lines=body_h - 2, max_cols=right_w - 3)):
+                    py = body_top + 1 + i
+                    if py >= body_bottom:
+                        break
+                    try:
+                        stdscr.addstr(py, right_x + 2, pline, curses.color_pair(5))
+                    except curses.error:
+                        pass
+            else:
+                hint = f"按 Enter 或 n 建立新的 tmux session（目錄：{tmux.home_dir}）"
+                try:
+                    stdscr.addstr(
+                        body_top + 1, right_x + 2, truncate_and_pad(hint, right_w - 3, pad=False), curses.color_pair(4)
+                    )
+                except curses.error:
+                    pass
+
+        try:
+            stdscr.addstr(h - 3, 0, "─" * (w - 1), curses.color_pair(1))
+            status_msg = f" 共 {len(sessions)} 個 Session | 在 tmux 內按 Ctrl+B d 可退回此選擇畫面，或按 Ctrl+B s 切換"
+            stdscr.addstr(h - 2, 0, truncate_and_pad(status_msg, w - 1, pad=False), curses.color_pair(1))
+        except curses.error:
+            pass
+
+        stdscr.refresh()
+
+        ch = stdscr.getch()
+        if ch == -1:
+            continue
+        elif ch in (curses.KEY_UP, ord("k"), ord("K")):
+            selected = (selected - 1) % total_items
+        elif ch in (curses.KEY_DOWN, ord("j"), ord("J")):
+            selected = (selected + 1) % total_items
+        elif ord("1") <= ch <= ord("9"):
+            num_idx = ch - ord("1")
+            if num_idx < len(sessions):
+                return ("attach", sessions[num_idx]["name"], True)
+        elif ch in (curses.KEY_ENTER, 10, 13, ord("d"), ord("D")):
+            if selected < len(sessions):
+                return ("attach", sessions[selected]["name"], True)
+            new_name = ask_new_name(stdscr, sessions)
+            if new_name:
+                return ("new", new_name, True)
+        elif ch in (ord("a"), ord("A")):
+            if selected < len(sessions):
+                return ("attach", sessions[selected]["name"], False)
+        elif ch in (ord("n"), ord("N"), ord("+")):
+            new_name = ask_new_name(stdscr, sessions)
+            if new_name:
+                return ("new", new_name, True)
+        elif ch in (ord("x"), ord("X")):
+            if selected < len(sessions):
+                target = sessions[selected]["name"]
+                if confirm_prompt(stdscr, f"確定要關閉刪除 session '{target}' 嗎？"):
+                    tmux.run("kill-session", "-t", target, capture_output=True)
+        elif ch in (ord("r"), ord("R")):
+            continue
+        elif ch in (ord("s"), ord("S")):
+            return ("shell", "", False)
+        elif ch in (ord("u"), ord("U")):
+            return ("switch", "", False)
+
+
+def main():
+    if len(sys.argv) < 2 or not re.fullmatch(r"[A-Za-z0-9_-]+", sys.argv[1]):
+        print("用法：agent-selector <工號>", file=sys.stderr)
+        sys.exit(2)
+
+    user = sys.argv[1]
+    tmux = Tmux(user)
+    os.makedirs(tmux.home_dir, exist_ok=True)
+    os.environ["AGENT_USER"] = user
+
+    if not sys.stdin.isatty():
+        print("agent-selector: stdin 不是 TTY", file=sys.stderr)
+        sys.exit(1)
+
+    failures = 0
+    while True:
+        try:
+            action, target, detach_others = curses.wrapper(selector_ui, tmux)
+            failures = 0
+        except KeyboardInterrupt:
+            continue
+        except Exception as e:
+            failures += 1
+            print(f"TUI Error: {e}", file=sys.stderr)
+            if failures >= 5 or not sys.stdin.isatty():
+                sys.exit(1)
+            time.sleep(1)
+            continue
+
+        sys.stdout.write("\033[2J\033[H")
+        sys.stdout.flush()
+
+        if action == "attach":
+            args = ["attach-session"]
+            if detach_others:
+                args.append("-d")
+            tmux.run(*args, "-t", target)
+        elif action == "new":
+            args = ["new-session", "-A"]
+            if detach_others:
+                args.append("-D")
+            args += ["-s", target, "-c", tmux.home_dir, "-e", f"AGENT_USER={user}"]
+            tmux.run(*args)
+        elif action == "shell":
+            subprocess.run(["/bin/bash", "-l"], cwd=tmux.home_dir)
+        elif action == "switch":
+            return
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# ttyd 進來的第一層：輸入工號。只接受 AGENT_USERS 裡的值（不分大小寫），通過後進該工號的
+# tmux 選單；選單裡選「換工號」會回到這裡。
+#
+# 這是「軟區分」：防止大家搶同一個畫面，不是權限控管。真正的門在 Cloudflare Access。
+set -uo pipefail
+
+declare -A allowed=()
+IFS=',' read -r -a users <<< "${AGENT_USERS:-}"
+for raw in "${users[@]}"; do
+  u="$(printf '%s' "$raw" | tr -d '[:space:]')"
+  [[ "$u" =~ ^[A-Za-z0-9_-]+$ ]] || continue
+  allowed["${u^^}"]="$u"
+done
+
+# Ctrl+C 只清掉這一行輸入，不要讓 ttyd 整個斷線。
+trap 'echo' INT
+
+fails=0
+while true; do
+  printf '\033[2J\033[H'
+  printf '\033[36m══ CDY_AGENT ══\033[0m\n\n'
+  if [ "${#allowed[@]}" -eq 0 ]; then
+    printf '\033[31m尚未設定任何工號（AGENT_USERS 是空的），請聯絡管理者。\033[0m\n'
+    sleep 30
+    continue
+  fi
+
+  read -r -p '請輸入工號：' input || { sleep 1; continue; }
+  key="$(printf '%s' "$input" | tr -d '[:space:]')"
+  key="${key^^}"
+
+  if [ -n "$key" ] && [ -n "${allowed[$key]:-}" ]; then
+    fails=0
+    /usr/local/bin/agent-selector "${allowed[$key]}"
+    continue
+  fi
+
+  fails=$((fails + 1))
+  printf '\033[33m查無此工號。\033[0m\n'
+  # 連錯幾次就稍微拖慢，避免被拿來亂猜。
+  if [ "$fails" -ge 3 ]; then sleep 5; else sleep 1; fi
+done

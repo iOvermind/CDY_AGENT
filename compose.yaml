@@ -1,0 +1,86 @@
+# 本機驗證用：跑 ./build.sh 建出來的 image，資料放在 ./data。
+#
+#     ./build.sh
+#     docker compose up -d
+#     打開 http://127.0.0.1:7681
+#
+# agent 只接 internal 網路，沒辦法直接 publish port，所以多一個 peek 把 127.0.0.1:7681
+# 轉進去（只在本機驗證用，正式的 compose.hub.yaml 沒有它）。
+# 要連 Cloudflare Tunnel 一起測：在 .env 填 TUNNEL_TOKEN，再 docker compose --profile tunnel up -d。
+
+services:
+  agent:
+    image: ${AGENT_IMAGE:-cdy_agent:latest}
+    hostname: NAS-AGENT
+    init: true
+    environment:
+      AGENT_USERS: "USER1,USER2"
+      TZ: Asia/Taipei
+      TTYD_CREDENTIAL: ""
+    volumes:
+      - ./data/workspace:/workspace
+      - ./data/home:/home/dev
+    expose:
+      - "7681"
+    networks:
+      - internal
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: "6"
+    mem_limit: 16g
+    pids_limit: 2048
+    depends_on:
+      egress:
+        condition: service_started
+    restart: unless-stopped
+
+  egress:
+    image: ${EGRESS_IMAGE:-cdy_agent_egress:latest}
+    networks:
+      - internal
+      - outbound
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    restart: unless-stopped
+
+  peek:
+    image: alpine/socat:latest
+    command: tcp-listen:7681,fork,reuseaddr tcp-connect:agent:7681
+    ports:
+      - "127.0.0.1:7681:7681"
+    networks:
+      - internal
+      - outbound
+    cap_drop:
+      - ALL
+    depends_on:
+      - agent
+    restart: unless-stopped
+
+  cloudflared:
+    profiles: [tunnel]
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    networks:
+      - internal
+      - outbound
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      agent:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  internal:
+    internal: true
+  outbound: {}

@@ -1,0 +1,77 @@
+# 從 Docker Hub 拉 image 跑的版本，貼進 Dockhand 用。
+# 需要的變數：TUNNEL_TOKEN（Cloudflare Zero Trust → Networks → Tunnels 拿到的權杖）。
+# Tunnel 的 public hostname 的 service 填 http://agent:7681；登入控管在 Cloudflare Access 設。
+#
+# 網路設計：agent 只接 internal（沒有對外路由，也連不到 LAN／NAS），所有對外連線經 egress
+# proxy；egress 用黑名單擋掉私網段。這樣不需要動 TrueNAS 主機的防火牆。
+
+services:
+  agent:
+    image: overmindyuan/cdy_agent:latest
+    # 每次部署都重拉，latest 才會換新。回滾就把 latest 改成 sha-xxxxxxx 那種 tag。
+    pull_policy: always
+    hostname: NAS-AGENT
+    init: true
+    environment:
+      # 可登入的工號，逗號分隔。改完重新部署即可（workspace/<工號> 會自動建立）。
+      AGENT_USERS: "USER1,USER2"
+      TZ: Asia/Taipei
+      # ttyd 的第二道帳密（user:password）。留空就不啟用，控管交給 Cloudflare Access。
+      TTYD_CREDENTIAL: ""
+    volumes:
+      # 同仁的程式碼：/workspace/<工號>
+      - /path/to/workspace:/workspace
+      # Agent 登入憑證、plugin、個人設定、uv/cargo/go 的快取
+      - /path/to/home:/home/dev
+    expose:
+      - "7681"
+    networks:
+      - internal
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: "6"
+    mem_limit: 16g
+    pids_limit: 2048
+    depends_on:
+      egress:
+        condition: service_started
+    restart: unless-stopped
+
+  egress:
+    image: overmindyuan/cdy_agent_egress:latest
+    pull_policy: always
+    networks:
+      - internal
+      - outbound
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    networks:
+      - internal
+      - outbound
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      agent:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  # 沒有對外路由的內部網路：agent、egress、cloudflared 在這裡互通。
+  internal:
+    internal: true
+  # 一般 bridge，只有 egress 與 cloudflared 接，負責真正出網。
+  outbound: {}

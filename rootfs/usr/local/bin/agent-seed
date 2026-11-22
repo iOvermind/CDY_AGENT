@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# 依 /opt/agent/plugins.txt 補齊 Claude marketplace 與 plugin，並註冊 codegraph MCP。
+#
+# 只補「還沒有的」：已經加過的 marketplace、裝過的 plugin 不重做，同仁自己另外裝的也不動。
+# 清單裡的東西若被手動移除，下次容器啟動會再裝回來；不想要就從 plugins.txt 拿掉。
+# 要更新已裝的 plugin，在容器內自己跑 `claude plugin marketplace update`。
+set -uo pipefail
+
+LIST=/opt/agent/plugins.txt
+PLUGINS_DIR="$HOME/.claude/plugins"
+
+echo "== $(date '+%F %T') agent-seed 開始"
+
+has_marketplace() {
+  jq -e --arg n "$1" 'has($n)' "$PLUGINS_DIR/known_marketplaces.json" >/dev/null 2>&1
+}
+has_plugin() {
+  jq -e --arg p "$1" '.plugins | has($p)' "$PLUGINS_DIR/installed_plugins.json" >/dev/null 2>&1
+}
+
+while read -r name source plugins; do
+  case "$name" in ''|'#'*) continue ;; esac
+
+  if has_marketplace "$name"; then
+    echo "marketplace 已存在：$name"
+  else
+    echo "加入 marketplace：$name ($source)"
+    claude plugin marketplace add "$source" || echo "!! 加入 $name 失敗"
+  fi
+
+  for p in $plugins; do
+    id="$p@$name"
+    if has_plugin "$id"; then
+      echo "plugin 已安裝：$id"
+    else
+      echo "安裝 plugin：$id"
+      claude plugin install "$id" || echo "!! 安裝 $id 失敗"
+    fi
+  done
+done < "$LIST"
+
+if claude mcp get codegraph >/dev/null 2>&1; then
+  echo 'MCP 已存在：codegraph'
+else
+  echo '註冊 MCP：codegraph'
+  claude mcp add -s user codegraph -- codegraph serve --mcp || echo '!! 註冊 codegraph 失敗'
+fi
+
+echo "== $(date '+%F %T') agent-seed 結束"

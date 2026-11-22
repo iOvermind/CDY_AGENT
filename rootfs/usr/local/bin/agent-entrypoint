@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# 容器啟動：補齊家目錄、建立工號 workspace、背景同步 Claude 技能，最後交給 ttyd。
+set -euo pipefail
+
+say() { printf '[entrypoint] %s\n' "$*"; }
+
+# ── 家目錄 ────────────────────────────────────────────────
+# /home/dev 在正式環境是 host path，第一次是空的，image 裡的 skel 會被蓋掉，所以補回來。
+# 已經存在的檔案一律不動。
+cp -rn /etc/skel/. "$HOME"/ 2>/dev/null || true
+mkdir -p "$HOME/.claude" "$HOME/.cache" "$HOME/.local/bin"
+
+if [ ! -f "$HOME/.claude/settings.json" ]; then
+  cp /opt/agent/claude-settings.json "$HOME/.claude/settings.json"
+  say '已寫入預設的 ~/.claude/settings.json'
+fi
+
+# ── 工號 workspace ────────────────────────────────────────
+# AGENT_USERS 是逗號分隔的工號清單，例如 "USER1,USER2"。
+IFS=',' read -r -a users <<< "${AGENT_USERS:-}"
+count=0
+for raw in "${users[@]}"; do
+  u="$(printf '%s' "$raw" | tr -d '[:space:]')"
+  [ -n "$u" ] || continue
+  if [[ ! "$u" =~ ^[A-Za-z0-9_-]+$ ]]; then
+    say "略過不合法的工號：$u（只允許英數字、底線、連字號）"
+    continue
+  fi
+  mkdir -p "/workspace/$u"
+  count=$((count + 1))
+done
+say "工號數：$count"
+[ "$count" -gt 0 ] || say '警告：AGENT_USERS 是空的，沒有人登入得了。'
+
+# ── Claude 技能同步（背景跑，不擋 ttyd 啟動）──────────────
+nohup /usr/local/bin/agent-seed >> "$HOME/.cache/agent-seed.log" 2>&1 &
+
+# ── ttyd ──────────────────────────────────────────────────
+args=(-W -p 7681 --ping-interval 30 -t titleFixed=CDY_AGENT -t disableLeaveAlert=true)
+if [ -n "${TTYD_CREDENTIAL:-}" ]; then
+  args+=(-c "$TTYD_CREDENTIAL")
+  say 'ttyd 已啟用帳密（TTYD_CREDENTIAL）'
+fi
+
+say 'ttyd 啟動於 :7681'
+exec ttyd "${args[@]}" /usr/local/bin/agent-login

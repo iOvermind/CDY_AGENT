@@ -1,0 +1,8 @@
+# 容器啟動時自動補齊的 Claude Code marketplace 與 plugin（見 rootfs/usr/local/bin/agent-seed）。
+#
+# 格式：marketplace名稱  來源(GitHub owner/repo)  [plugin ...]
+# marketplace 名稱要跟該 repo 的 .claude-plugin/marketplace.json 裡的 name 一致。
+mattpocock               mattpocock/skills                    mattpocock-skills
+cursor-plugins           cursor/plugins                       pstack
+impeccable               pbakaus/impeccable                   impeccable
+claude-plugins-official  anthropics/claude-plugins-official   rust-analyzer-lsp gopls-lsp pyright-lsp typescript-lsp
