@@ -23,16 +23,41 @@ def width(s):
     return sum(2 if unicodedata.east_asian_width(c) in ("W", "F") else 1 for c in s)
 
 
-def clip(s, w):
-    out, cur = [], 0
-    for c in s:
-        cw = 2 if unicodedata.east_asian_width(c) in ("W", "F") else 1
-        if cur + cw > w:
-            out.append("…")
-            break
-        out.append(c)
-        cur += cw
-    return "".join(out)
+NO_START = set("、，。：；！？）」』】〕,.;:!?)")
+NO_END = set("（「『【〔(")
+
+
+def wrap(s, w):
+    """依顯示寬度換行（中文算 2 格），英文單字盡量不拆開。"""
+    lines, cur, cw = [], "", 0
+    for tok in re.findall(r"[\x21-\x7e]+|\s+|.", s):
+        tw = width(tok)
+        if cw + tw > w and cur.strip():
+            carry = ""
+            if tok in NO_START:  # 標點不放行首：把前面的字一起帶到下一行（連續標點一起帶）
+                carry, cur = cur[-1], cur[:-1]
+                while cur and carry[0] in NO_START:
+                    carry, cur = cur[-1] + carry, cur[:-1]
+            while cur and cur[-1] in NO_END:  # 開括號不留在行尾
+                carry, cur = cur[-1] + carry, cur[:-1]
+            lines.append(cur.rstrip())
+            cur, cw = carry, width(carry)
+            if tok.isspace():
+                continue
+        while tw > w:  # 單一 token 比整行還長，只好硬切
+            head = ""
+            for c in tok:
+                if width(head + c) > w:
+                    break
+                head += c
+            lines.append(head)
+            tok = tok[len(head):]
+            tw = width(tok)
+        cur += tok
+        cw += tw
+    if cur.strip() or not lines:
+        lines.append(cur.rstrip())
+    return lines
 
 
 def pad(s, w):
@@ -43,11 +68,21 @@ def h1(t):
     return f"\n{B}{CYAN}━━ {t} ━━{RST}\n"
 
 
-def rows(items, key_w=22, indent=2):
-    cols = shutil.get_terminal_size((120, 40)).columns
+def cols():
+    return shutil.get_terminal_size((120, 40)).columns
+
+
+def rows(items, indent=2, min_w=22):
+    """兩欄表格：名稱欄寬取這組最長的名稱（名稱不換行），說明太長就換行並對齊說明欄。"""
+    if not items:
+        return ""
+    key_w = max([min_w] + [width(k) for k, _ in items])
+    lead = indent + key_w + 1
     out = []
     for k, v in items:
-        out.append(f"{' ' * indent}{YEL}{pad(k, key_w)}{RST} {clip(v, max(20, cols - key_w - indent - 2))}")
+        ls = wrap(v, max(20, cols() - lead - 1))
+        out.append(f"{' ' * indent}{YEL}{pad(k, key_w)}{RST} {ls[0]}")
+        out += [" " * lead + l for l in ls[1:]]
     return "\n".join(out)
 
 
@@ -56,11 +91,12 @@ def frontmatter(path):
     try:
         text = open(path, encoding="utf-8").read()
     except OSError:
-        return None, None
+        return None, None, {}
     m = re.match(r"^---\s*\n(.*?)\n---", text, re.S)
     if not m:
-        return None, None
+        return None, None, {}
     name, desc, lines = None, None, m.group(1).splitlines()
+    flags = {}
     i = 0
     while i < len(lines):
         line = lines[i]
@@ -75,8 +111,11 @@ def frontmatter(path):
                     buf.append(lines[i].strip())
                 v = " ".join(b for b in buf if b)
             desc = v.strip("'\"").replace('\\"', '"')
+        elif re.match(r"(disable-model-invocation|user-invocable):", line):
+            k, v = line.split(":", 1)
+            flags[k] = v.strip().strip("'\"").lower() == "true"
         i += 1
-    return name, desc
+    return name, desc, flags
 
 
 PLUGIN_INTRO = {
@@ -101,8 +140,45 @@ def zh(plugin, name, desc):
     return ZH.get(f"{plugin}/{name}", desc)
 
 
+PASSIVE = ZH.get("_被動", {})  # {"plugin/名稱前綴": "載入它的技能"}
+
+TAG_AUTO, TAG_PASSIVE, TAG_MANUAL = f"{GRN}〔自動〕{RST}", f"{CYAN}〔被動〕{RST}", f"{DIM}〔手動〕{RST}"
+
+CATEGORY = {"Build": "建構", "Evaluate": "評估", "Refine": "精修", "Enhance": "強化", "Fix": "修正", "Iterate": "迭代"}
+
+
+def trigger(plugin, name, flags):
+    """回傳 (標籤, 補充說明)。"""
+    for prefix, loader in PASSIVE.items():
+        if f"{plugin}/{name}".startswith(prefix):
+            return TAG_PASSIVE, f"（{loader} 會載入）"
+    if flags.get("disable-model-invocation"):
+        return TAG_MANUAL, ""
+    return TAG_AUTO, ""
+
+
+def subcommands(plugin, name, path):
+    """SKILL.md 裡的指令表（| `cmd [arg]` | 分類 | 說明 | ... |）→ [(分類, [(指令, 說明)])]，略過已棄用的。"""
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError:
+        return []
+    # 只認表頭是「| Command | Category | ...」的那張表
+    t = re.search(r"^\|\s*Command\s*\|\s*Category\s*\|.*\n\|[-| :]+\|\n((?:\|.*\n?)+)", text, re.M)
+    if not t:
+        return []
+    groups = {}
+    for m in re.finditer(r"^\|\s*`([^`]+)`\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|", t.group(1), re.M):
+        cmd, cat, desc = m.groups()
+        if "deprecated" in desc.lower():
+            continue
+        key = cmd.split()[0]
+        groups.setdefault(CATEGORY.get(cat, cat), []).append((cmd, zh(plugin, f"{name} {key}", desc)))
+    return list(groups.items())
+
+
 def plugins():
-    """回傳 [(plugin id, [(技能, 說明)], [(agent, 說明)])]。"""
+    """回傳 [(plugin id, [(技能, 標籤, 說明, 子指令)], [(agent, 說明)])]。"""
     f = os.path.join(HOME, ".claude/plugins/installed_plugins.json")
     try:
         data = json.load(open(f))
@@ -117,17 +193,24 @@ def plugins():
         for dirpath, dirnames, filenames in os.walk(root):
             dirnames[:] = [d for d in dirnames if d not in ("node_modules", ".git", "deprecated", "in-progress")]
             if "SKILL.md" in filenames:
-                n, d = frontmatter(os.path.join(dirpath, "SKILL.md"))
-                skills.append((n or os.path.basename(dirpath), d or ""))
+                f = os.path.join(dirpath, "SKILL.md")
+                n, d, flags = frontmatter(f)
+                skills.append((n or os.path.basename(dirpath), d or "", flags, f))
             if dirpath == os.path.join(root, "agents"):
                 for fn in filenames:
                     if fn.endswith(".md"):
-                        n, d = frontmatter(os.path.join(dirpath, fn))
+                        n, d, _ = frontmatter(os.path.join(dirpath, fn))
                         agents.append((n or fn[:-3], d or ""))
         p = pid.split("@")[0]
-        skills = [(n, zh(p, n, d)) for n, d in skills]
-        agents = [(n, zh(p, n, d)) for n, d in agents]
-        out.append((pid, sorted(set(skills)), sorted(set(agents))))
+        seen, rows_ = set(), []
+        for n, d, flags, f in sorted(skills, key=lambda x: x[0]):
+            if n in seen:
+                continue
+            seen.add(n)
+            tag, note = trigger(p, n, flags)
+            rows_.append((n, tag, zh(p, n, d) + note, subcommands(p, n, f)))
+        agents = sorted({(n, zh(p, n, d)) for n, d in agents})
+        out.append((pid, rows_, agents))
     return out
 
 
@@ -182,17 +265,31 @@ def render():
     ps = plugins()
     if not ps:
         o.append(f"  {DIM}還沒裝好（容器剛啟動時會在背景安裝，log：~/.cache/agent-seed.log）{RST}")
+    else:
+        o.append(f"  {TAG_AUTO} Claude 看你的需求自己判斷要不要用（也可以打 /名稱）")
+        o.append(f"  {TAG_PASSIVE} 不用自己打，執行其他技能時會被載入")
+        o.append(f"  {TAG_MANUAL} 要自己在 claude 裡打 /名稱 才會用")
     for pid, skills, agents in ps:
         intro = PLUGIN_INTRO.get(pid.split("@")[0], "")
         o.append(f"\n  {B}{GRN}{pid}{RST}" + (f"  {intro}" if intro else ""))
         if pid.endswith("-lsp@claude-plugins-official"):
             o.append(f"    {DIM}語言伺服器：讓 Claude 能跳轉定義、找引用、看編譯錯誤{RST}")
         if skills:
-            o.append(f"    {DIM}技能（在 claude 裡打 /技能名 使用，或描述需求讓它自動挑）{RST}")
-            o.append(rows([("/" + n, d) for n, d in skills], key_w=30, indent=4))
+            name_w = max(width("/" + n) for n, *_ in skills)
+            lead = 4 + name_w + 1 + 8 + 1
+            for n, tag, d, subs in skills:
+                ls = wrap(d, max(20, cols() - lead - 1))
+                o.append(f"    {YEL}{pad('/' + n, name_w)}{RST} {tag} {ls[0]}")
+                o += [" " * lead + l for l in ls[1:]]
+                if subs:
+                    o.append(f"{' ' * lead}{DIM}子指令：/{n} <指令> [對象]，例如 /{n} {subs[0][1][0][0].split()[0]} 首頁{RST}")
+                    sub_w = max(width(c) for _, items in subs for c, _ in items)
+                    for cat, items in subs:
+                        o.append(f"{' ' * (lead + 2)}{B}{cat}{RST}")
+                        o.append(rows(items, indent=lead + 4, min_w=sub_w))
         if agents:
-            o.append(f"    {DIM}subagent{RST}")
-            o.append(rows(agents, key_w=30, indent=4))
+            o.append(f"    {DIM}subagent（Claude 執行技能時自己派出，不用手動叫）{RST}")
+            o.append(rows(agents, indent=4))
 
     o.append(h1("MCP 伺服器"))
     servers = mcp_servers()
@@ -207,7 +304,7 @@ def render():
         ("pyright", "Python 型別檢查與語言伺服器"),
         ("tsc / typescript-language-server", "TypeScript"),
         ("build-essential", "gcc、make、pkg-config、libssl-dev"),
-    ], key_w=30))
+    ]))
 
     o.append(h1("常用工具"))
     o.append(rows([
@@ -225,7 +322,7 @@ def render():
         ("agent-git-setup", "設定自己工號的 git 名字／email 與 GitHub SSH 金鑰"),
         ("agent-git-ssh -T git@github.com", "測試自己的 GitHub 金鑰（直接打 ssh 不會用到工號金鑰）"),
         ("agent-help", "這個說明頁"),
-    ], key_w=34))
+    ]))
 
     o.append(h1("目錄"))
     dirs = [("/workspace/<工號>", "自己的工作目錄（NAS 上，大家看得到彼此的）"), ("~ (/home/dev)", "共用家目錄：Agent 登入、設定、快取")]

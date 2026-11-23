@@ -1,13 +1,14 @@
 {
-  "_說明": "agent-help 用的技能中文說明。key 是「plugin名稱/技能或 subagent 名稱」；沒有對照的會顯示原文。",
-
+  "_說明": "agent-help 用的中文對照。key 是「plugin/技能」；impeccable 子指令是「plugin/技能 子指令」。沒有對照的顯示原文。",
+  "_被動": {
+    "pstack/principle-": "/poteto-mode"
+  },
   "impeccable/impeccable": "設計、改版、審查、打磨或加動畫到前端：網站、landing page、儀表板、App 介面、元件、iOS/Android 畫面或設計系統（DESIGN.md）",
   "impeccable/impeccable-asset-producer": "依已核可的設計稿產出乾淨、可重用的圖檔素材，不更動設計方向",
   "impeccable/impeccable-documenter": "從完成的成品反推並記錄設計系統，寫成 DESIGN.md",
   "impeccable/impeccable-finish-reviewer": "對照設計方向與核可稿審查完成的成品，列出依重要性排序的修正清單",
   "impeccable/impeccable-manual-edit-applier": "把即時手動修改的文案批次套回原始碼",
   "impeccable/impeccable-motion-reviewer": "審查動畫的連貫性、節奏、細節與減少動態效果的支援，附證據列出修正",
-
   "mattpocock-skills/ask-matt": "不知道該用哪個技能時問它，幫你挑合適的技能或流程",
   "mattpocock-skills/code-review": "審查某個 commit／分支之後的變更：是否符合專案規範、是否符合原始需求",
   "mattpocock-skills/codebase-design": "設計「深模組」的共同語彙：改善介面、找可加深的地方、決定切分點、讓程式更好測、更好讓 AI 讀懂",
@@ -39,7 +40,6 @@
   "mattpocock-skills/wayfinder": "規劃超大型工作（一個 session 做不完）：在 issue tracker 上做決策地圖，逐一解決",
   "mattpocock-skills/wizard": "產生互動式 bash 精靈，帶人一步步完成只有人能做的步驟（開設基礎設施、設定憑證、操作第三方後台）",
   "mattpocock-skills/writing-for-agents": "撰寫給 agent 看的文件：建立或修改技能、AGENTS.md、CLAUDE.md",
-
   "pstack/architect": "寫程式前先勾勒型別、函式簽章與模組結構，實作過程中持續把關",
   "pstack/arena": "同一個任務平行做 N 個版本，選一個當基礎，再把其他版本的優點移植進來",
   "pstack/automate-me": "把你的偏好與工作習慣整理成個人專屬的 mode 技能，讓 agent 照你的方式做事",
@@ -99,5 +99,28 @@
   "pstack/unslop": "刪掉文章裡的 AI 腔",
   "pstack/why": "解釋「為什麼這樣設計／為什麼選 Y」、回歸與事後檢討，附來源說明決策與取捨",
   "pstack/comment-sicko": "超討厭註解的審查者：專門找可以刪掉的註解和權宜寫法",
-  "pstack/poteto-agent": "/poteto-mode 執行時派出的子 agent，負責寫程式與輔助工作"
+  "pstack/poteto-agent": "/poteto-mode 執行時派出的子 agent，負責寫程式與輔助工作",
+  "impeccable/impeccable shape": "寫程式前先規劃 UX/UI",
+  "impeccable/impeccable init": "把產品背景記錄到 PRODUCT.md",
+  "impeccable/impeccable document": "從現有程式碼產生 DESIGN.md",
+  "impeccable/impeccable extract": "把可重用的 token 與元件抽成設計系統",
+  "impeccable/impeccable critique": "UX 設計審查，依準則評分",
+  "impeccable/impeccable audit": "技術品質檢查：無障礙、效能、響應式",
+  "impeccable/impeccable polish": "上線前最後一輪打磨",
+  "impeccable/impeccable bolder": "讓太保守、平淡的設計更大膽",
+  "impeccable/impeccable quieter": "讓太花俏、太刺激的設計收斂",
+  "impeccable/impeccable distill": "精簡到只剩本質，拿掉多餘的複雜度",
+  "impeccable/impeccable harden": "上線等級的處理：錯誤狀態、國際化、邊界情況",
+  "impeccable/impeccable onboard": "設計第一次使用的流程、空狀態與引導",
+  "impeccable/impeccable animate": "加入有目的的動畫與動態效果",
+  "impeccable/impeccable colorize": "為單調的單色介面加入有策略的配色",
+  "impeccable/impeccable typeset": "改善字體階層與字型選擇",
+  "impeccable/impeccable layout": "修正間距、節奏與視覺階層",
+  "impeccable/impeccable delight": "加入個性與讓人記得的小細節",
+  "impeccable/impeccable overdrive": "突破常規、技術上驚豔的效果",
+  "impeccable/impeccable clarify": "改善介面文案、標籤與錯誤訊息",
+  "impeccable/impeccable adapt": "適配不同裝置與螢幕尺寸",
+  "impeccable/impeccable optimize": "診斷並修正 UI 效能",
+  "impeccable/impeccable live": "視覺變體模式：在瀏覽器點選元素，比較不同替代方案",
+  "impeccable/impeccable generate": "為指定元素產生多個變體在瀏覽器裡挑選，不用手動點選"
 }

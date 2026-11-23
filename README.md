@@ -86,6 +86,10 @@ Claude 的 marketplace 與 plugin 是**容器啟動時**由 `agent-seed` 補齊�
 Claude plugin 與技能（即時讀取實際安裝內容）、MCP、語言工具、常用工具、目錄與網路限制。用 less 顯示，
 `q` 離開、`/` 搜尋。
 
+每個技能標註觸發方式：〔自動〕Claude 依需求自己判斷使用、〔被動〕由其他技能載入（pstack 的 principle-* 由
+`/poteto-mode` 載入）、〔手動〕要自己打 `/名稱`。有子指令的技能（目前是 impeccable）會即時讀取它 SKILL.md
+裡的指令表，依分類列出，已棄用的不列。
+
 技能說明的中文對照在 [`skills-zh.json`](skills-zh.json)（key 是 `plugin名稱/技能名稱`）。plugin 更新後多出來、
 還沒翻譯的技能會顯示原文，補進這個檔案即可。
 
