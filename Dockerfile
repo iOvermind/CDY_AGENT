@@ -141,4 +141,8 @@ EXPOSE 7681
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl -s --noproxy '*' -o /dev/null http://127.0.0.1:7681/ || exit 1
 
+# 版本號由建置時傳入（單一來源是 VERSION，見 docs/DEVELOPER.md §7）。放在最後，不影響前面的快取。
+ARG VERSION=dev
+LABEL org.opencontainers.image.version=$VERSION
+
 ENTRYPOINT ["/usr/local/bin/agent-entrypoint"]

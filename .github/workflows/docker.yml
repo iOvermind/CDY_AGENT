@@ -1,18 +1,24 @@
-# push 到 main 時建 linux/amd64 的 image 並推上 Docker Hub。
+# push 到 main 或推 v* tag 時，先跑 ./tests/run.sh，再建 linux/amd64 的 image 並推上 Docker Hub。
 #
 # 需要在 repo 的 Settings → Secrets and variables → Actions 設定：
 #   DOCKERHUB_USERNAME  Docker Hub 帳號（overmindyuan）
 #   DOCKERHUB_TOKEN     Docker Hub 的 Personal access token（Read & Write）
 #
 # 每週一也會重建一次，讓三個 Agent CLI 與基底 image 跟上新版（Dockerfile 沒有鎖版本）。
+#
+# 推上去的 tag：latest、commit 短碼（sha-xxxxxxx，回滾用）；推 v1.2.3 這種 git tag 時另加 1.2.3。
+# image 的 org.opencontainers.image.version 一律取自 VERSION（單一來源，見 docs/DEVELOPER.md §7）。
+# 進版用 ./scripts/release.sh，它會推 main 與 tag。
 name: Docker
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
     paths-ignore:
       - '**.md'
       - 'LICENSE'
+      - 'docs/**'
   schedule:
     - cron: '0 18 * * 0' # 台灣時間週一 02:00
   workflow_dispatch:
@@ -22,7 +28,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: bash tests/run.sh
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -33,6 +47,9 @@ jobs:
             context: egress
     steps:
       - uses: actions/checkout@v4
+
+      - id: version
+        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -48,6 +65,9 @@ jobs:
           tags: |
             type=raw,value=latest
             type=sha,format=short
+            type=semver,pattern={{version}}
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
 
       - uses: docker/build-push-action@v6
         with:
@@ -56,5 +76,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}

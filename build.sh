@@ -12,6 +12,7 @@ cd "$ROOT"
 
 AGENT_IMAGE="${AGENT_IMAGE:-cdy_agent:latest}"
 EGRESS_IMAGE="${EGRESS_IMAGE:-cdy_agent_egress:latest}"
+VERSION="$(cat "$ROOT/VERSION")"   # 寫進 image 的 version label
 
 say() { printf '\033[36m[build]\033[0m %s\n' "$*"; }
 die() { printf '\033[31m[build]\033[0m %s\n' "$*" >&2; exit 1; }
@@ -23,9 +24,9 @@ docker info >/dev/null 2>&1 || die 'Docker 裝了但連不上 daemon。'
 mkdir -p "$ROOT/data/workspace" "$ROOT/data/home" "$ROOT/data/repos" "$ROOT/data/tmux"
 
 say "建置 ${EGRESS_IMAGE}……"
-docker build --tag "$EGRESS_IMAGE" "$ROOT/egress"
+docker build --build-arg VERSION="$VERSION" --tag "$EGRESS_IMAGE" "$ROOT/egress"
 
 say "建置 ${AGENT_IMAGE}……"
-docker build --tag "$AGENT_IMAGE" "$ROOT"
+docker build --build-arg VERSION="$VERSION" --tag "$AGENT_IMAGE" "$ROOT"
 
 say '完成。docker compose up -d 之後打開 http://127.0.0.1:7681'

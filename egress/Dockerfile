@@ -11,4 +11,8 @@ COPY --chmod=644 squid.conf /etc/squid/squid.conf
 USER proxy
 EXPOSE 3128
 
+# 版本號由建置時傳入（單一來源是 VERSION，見 docs/DEVELOPER.md §7）。
+ARG VERSION=dev
+LABEL org.opencontainers.image.version=$VERSION
+
 CMD ["squid", "-N", "-d", "1", "-f", "/etc/squid/squid.conf"]
