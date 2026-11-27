@@ -7,6 +7,9 @@
 
 ## [Unreleased]
 
+### Added (新增)
+- rea 的 Ghidra 分析會自動存檔（checkpoint）：分析結果與改名、註解存在 `~/.cache/rea/ghidra-checkpoints`，重開同一個檔直接接續，不必重新分析。要用分析種子（`REA_GHIDRA_SEED_FILE`）或指定語言時，得先取消 `REA_GHIDRA_CHECKPOINT_DIR`。
+
 ---
 
 ## [1.1.0] - 2026-11-28

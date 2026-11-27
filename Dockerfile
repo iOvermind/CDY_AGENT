@@ -13,6 +13,8 @@ ARG GID=3000
 ARG TTYD_VERSION=1.7.7
 ARG GO_VERSION=1.27.4
 # Ghidra 給 rea plugin 做原生程式反編譯用。REA 要求 Ghidra >= 12.2 與 JDK 25。
+# REA_GHIDRA_CHECKPOINT_DIR（下面 ENV）讓 rea 把分析結果與改名、註解存在家目錄，重開同一個檔直接接續；
+# 目錄由 agent-entrypoint 建立並設成 700（REA 要求只有自己能讀寫）。
 # 升版時三個值一起改：版本、壓縮檔日期、官方 release 頁上的 SHA-256。
 ARG GHIDRA_VERSION=12.2
 ARG GHIDRA_DATE=20261016
@@ -28,7 +30,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     GOPATH=/home/dev/go \
     GOTOOLCHAIN=local \
     JAVA_HOME=/opt/jdk \
-    GHIDRA_INSTALL_DIR=/opt/ghidra
+    GHIDRA_INSTALL_DIR=/opt/ghidra \
+    REA_GHIDRA_CHECKPOINT_DIR=/home/dev/.cache/rea/ghidra-checkpoints
 
 ENV PATH="/opt/jdk/bin:/opt/npm-global/bin:/opt/rust/cargo/bin:/usr/local/go/bin:/opt/go-tools/bin:/home/dev/go/bin:/home/dev/.local/bin:${PATH}"
 

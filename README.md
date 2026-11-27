@@ -30,7 +30,7 @@
 | :--- | :--- |
 | Agent CLI | Claude Code、Gemini CLI、Codex CLI（不鎖版本，每次建 image 拿最新） |
 | 語言工具鏈 | Node 24、Rust stable（rust-analyzer、clippy、rustfmt）、Go、uv（Python 版本與 venv 由各人自己管） |
-| 逆向工程 | Ghidra 12.2 與 JDK 25（給 rea plugin 反編譯原生程式） |
+| 逆向工程 | Ghidra 12.2 與 JDK 25（給 rea plugin 反編譯原生程式）；分析結果與標註存在 `~/.cache/rea/ghidra-checkpoints`，重開同一個檔直接接續 |
 | LSP | rust-analyzer、gopls、pyright、typescript-language-server |
 | Claude plugin | 見 [`plugins.txt`](plugins.txt)：mattpocock-skills、pstack、impeccable、ui-ux-pro-max、rea、rust-analyzer-lsp、gopls-lsp、pyright-lsp、typescript-lsp |
 | MCP | codegraph（含 `UserPromptSubmit` hook；在專案裡跑 `codegraph init` 後才有作用）；rea（隨 rea plugin 一起裝，原生反編譯用預裝的 Ghidra） |

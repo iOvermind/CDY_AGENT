@@ -22,6 +22,13 @@ TMUX_SOCKET_DIR="${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)"
 mkdir -p "$TMUX_SOCKET_DIR"
 chmod 700 "$TMUX_SOCKET_DIR" || say "警告：無法把 $TMUX_SOCKET_DIR 設成 700，tmux 可能拒絕啟動（檢查 host 目錄擁有者是否為 3000）"
 
+# rea 的 Ghidra checkpoint 目錄（路徑見 Dockerfile 的 REA_GHIDRA_CHECKPOINT_DIR）。REA 要求只有自己能讀寫。
+if [ -n "${REA_GHIDRA_CHECKPOINT_DIR:-}" ]; then
+  mkdir -p "$REA_GHIDRA_CHECKPOINT_DIR"
+  chmod 700 "$HOME/.cache/rea" "$REA_GHIDRA_CHECKPOINT_DIR" 2>/dev/null \
+    || say "警告：無法把 $REA_GHIDRA_CHECKPOINT_DIR 設成 700，rea 的 Ghidra 分析可能拒絕開啟"
+fi
+
 if [ ! -f "$HOME/.claude/settings.json" ]; then
   cp /opt/agent/claude-settings.json "$HOME/.claude/settings.json"
   say '已寫入預設的 ~/.claude/settings.json'

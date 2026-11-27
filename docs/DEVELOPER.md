@@ -305,6 +305,12 @@ bash tests/run.sh
 - **原因**：正式環境 `/home/dev` 是 host path，會蓋掉 image 裡的家目錄。
 - **處置**：工具一律裝在 `/opt` 或 `/usr/local`；家目錄的預設檔放 `/etc/skel`，由 `agent-entrypoint` 補回（已存在的不動）。
 
+#### rea 開不了原生程式，說 checkpoint 設定不允許
+
+- **症狀**：rea 用 Ghidra 開檔失敗，訊息提到 `REA_GHIDRA_CHECKPOINT_DIR`，或 checkpoint 目錄不是私有的。
+- **原因**：image 預設開啟 checkpoint（`REA_GHIDRA_CHECKPOINT_DIR`）。它跟分析種子（`REA_GHIDRA_SEED_FILE`）、指定語言（`REA_GHIDRA_LANGUAGE_ID`）、停用分析器等設定不能同時用；目錄也必須是 700。
+- **處置**：要用那些設定時，在啟動 claude 的 shell 裡 `unset REA_GHIDRA_CHECKPOINT_DIR` 再開 claude。目錄權限不對就看 entrypoint log 的警告，`chmod 700 ~/.cache/rea ~/.cache/rea/ghidra-checkpoints`。
+
 #### 在 NAS 掛載的資料夾裡 git status 一堆權限變更
 
 - **症狀**：`git status` 列出所有檔案，`git diff` 只有 `old mode 100644` / `new mode 100755`。

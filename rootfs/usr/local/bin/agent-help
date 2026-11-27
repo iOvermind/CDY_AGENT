@@ -127,7 +127,8 @@ PLUGIN_INTRO = {
 }
 
 PLUGIN_NOTE = {
-    "rea": "已預裝 Ghidra 當原生反編譯引擎（/opt/ghidra）；JavaScript／網頁／Electron 與一般檔案分析不需要它",
+    "rea": "已預裝 Ghidra 當原生反編譯引擎（/opt/ghidra）；JavaScript／網頁／Electron 與一般檔案分析不需要它。"
+           "Ghidra 的分析結果與改名、註解會存在 ~/.cache/rea/ghidra-checkpoints，重開同一個檔直接接續",
 }
 
 
