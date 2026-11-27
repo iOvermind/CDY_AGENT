@@ -122,5 +122,13 @@
   "impeccable/impeccable adapt": "適配不同裝置與螢幕尺寸",
   "impeccable/impeccable optimize": "診斷並修正 UI 效能",
   "impeccable/impeccable live": "視覺變體模式：在瀏覽器點選元素，比較不同替代方案",
-  "impeccable/impeccable generate": "為指定元素產生多個變體在瀏覽器裡挑選，不用手動點選"
+  "impeccable/impeccable generate": "為指定元素產生多個變體在瀏覽器裡挑選，不用手動點選",
+  "ui-ux-pro-max/ui-ux-pro-max": "UI/UX 設計知識庫：設計、實作、審查或修正網頁／App／桌面介面時查風格、配色、字型搭配、UX 準則、圖表與各框架的 UI 寫法（本機資料庫，用 python3 搜尋）",
+  "ui-ux-pro-max/design": "綜合設計：品牌識別、設計 token、UI 樣式、Logo、企業識別（CIP）、HTML 簡報、橫幅、圖示、社群圖片",
+  "ui-ux-pro-max/design-system": "設計系統：三層 token（基礎→語意→元件）、CSS 變數、間距與字級刻度、元件規格、符合品牌的簡報",
+  "ui-ux-pro-max/ui-styling": "用 shadcn/ui（Radix + Tailwind）與 Tailwind CSS 做好看、無障礙的介面：版面、元件、主題配色、深色模式",
+  "ui-ux-pro-max/brand": "品牌語氣、視覺識別、訊息框架與品牌一致性：品牌內容、行銷素材、風格指南",
+  "ui-ux-pro-max/banner-design": "設計社群、廣告、網站主視覺與印刷用的橫幅，提供多種美術方向",
+  "ui-ux-pro-max/slides": "用 Chart.js 與設計 token 做有策略的 HTML 簡報：響應式版面、文案公式",
+  "rea/reverse-engineer-anything": "用 REA 逆向分析已發佈的產物：原生執行檔、.NET/Java 等託管程式、Electron/JavaScript、封裝檔、韌體、瀏覽器頁面；解釋功能、比較版本、反編譯、協助重建（一般原始碼專案不用它）"
 }

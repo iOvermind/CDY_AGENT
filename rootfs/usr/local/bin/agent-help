@@ -122,6 +122,12 @@ PLUGIN_INTRO = {
     "mattpocock-skills": "工程流程技能：釐清需求（grill）、寫規格、拆票、TDD、除錯、重構架構",
     "pstack": "Cursor 的 agent 工作法：架構草圖、平行比稿、影響範圍、驗證、寫作與設計原則",
     "impeccable": "前端設計：設計、改版、審查、打磨網頁與介面",
+    "ui-ux-pro-max": "UI/UX 設計知識庫：風格、配色、字型、UX 準則、圖表與各框架的 UI 寫法，另有品牌、簡報、橫幅設計",
+    "rea": "逆向工程：分析已發佈的執行檔、套件、Electron／網頁應用與韌體，附 rea MCP 工具",
+}
+
+PLUGIN_NOTE = {
+    "rea": "已預裝 Ghidra 當原生反編譯引擎（/opt/ghidra）；JavaScript／網頁／Electron 與一般檔案分析不需要它",
 }
 
 
@@ -214,12 +220,47 @@ def plugins():
     return out
 
 
-def mcp_servers():
+MCP_INTRO = {
+    "codegraph": "把專案建成符號圖給 Claude 查；在專案目錄先跑 codegraph init",
+    "rea": "逆向工程工具（反編譯、字串／符號搜尋、網頁與 Electron 分析等），搭配 /reverse-engineer-anything",
+}
+
+
+def plugin_mcp_servers():
+    """plugin 自帶的 MCP（plugin.json 的 mcpServers 或 .mcp.json）→ {名稱: plugin id}。"""
+    f = os.path.join(HOME, ".claude/plugins/installed_plugins.json")
     try:
-        data = json.load(open(os.path.join(HOME, ".claude.json")))
-        return sorted(data.get("mcpServers", {}).keys())
+        data = json.load(open(f))
     except (OSError, ValueError):
-        return []
+        return {}
+    out = {}
+    for pid, entries in data.get("plugins", {}).items():
+        if not entries:
+            continue
+        root = entries[0].get("installPath", "")
+        for path, key in ((".claude-plugin/plugin.json", "mcpServers"), (".mcp.json", "mcpServers")):
+            try:
+                servers = json.load(open(os.path.join(root, path))).get(key)
+            except (OSError, ValueError, AttributeError):
+                continue
+            if isinstance(servers, dict):
+                for name in servers:
+                    out.setdefault(name, pid)
+    return out
+
+
+def mcp_servers():
+    """[(名稱, 說明)]：自己註冊的（~/.claude.json）加上 plugin 自帶的。"""
+    try:
+        own = json.load(open(os.path.join(HOME, ".claude.json"))).get("mcpServers", {})
+    except (OSError, ValueError):
+        own = {}
+    items = [(s, MCP_INTRO.get(s, "")) for s in sorted(own)]
+    for s, pid in sorted(plugin_mcp_servers().items()):
+        if s not in own:
+            intro = MCP_INTRO.get(s, "")
+            items.append((s, f"{intro}（{pid.split('@')[0]} plugin 提供）" if intro else f"（{pid.split('@')[0]} plugin 提供）"))
+    return items
 
 
 def render():
@@ -274,6 +315,9 @@ def render():
         o.append(f"\n  {B}{GRN}{pid}{RST}" + (f"  {intro}" if intro else ""))
         if pid.endswith("-lsp@claude-plugins-official"):
             o.append(f"    {DIM}語言伺服器：讓 Claude 能跳轉定義、找引用、看編譯錯誤{RST}")
+        note = PLUGIN_NOTE.get(pid.split("@")[0])
+        if note:
+            o.append(f"    {DIM}{note}{RST}")
         if skills:
             name_w = max(width("/" + n) for n, *_ in skills)
             lead = 4 + name_w + 1 + 8 + 1
@@ -293,7 +337,7 @@ def render():
 
     o.append(h1("MCP 伺服器"))
     servers = mcp_servers()
-    o.append(rows([(s, "codegraph：把專案建成符號圖給 Claude 查；在專案目錄先跑 codegraph init" if s == "codegraph" else "") for s in servers] or [("（無）", "")]))
+    o.append(rows(servers or [("（無）", "")]))
 
     o.append(h1("語言與開發工具"))
     o.append(rows([
@@ -304,6 +348,7 @@ def render():
         ("pyright", "Python 型別檢查與語言伺服器"),
         ("tsc / typescript-language-server", "TypeScript"),
         ("build-essential", "gcc、make、pkg-config、libssl-dev"),
+        ("java / ghidra", "JDK 25 與 Ghidra（/opt/ghidra，support/analyzeHeadless 可無介面分析）；rea 反編譯用"),
     ]))
 
     o.append(h1("常用工具"))

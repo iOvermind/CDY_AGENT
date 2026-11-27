@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+### Added (新增)
+- 預裝 Claude plugin `ui-ux-pro-max`（UI/UX 設計知識庫：風格、配色、字型、UX 準則與各框架寫法，另含品牌、簡報、橫幅等設計技能）。
+- 預裝 Claude plugin `rea`（逆向工程：分析已發佈的執行檔、套件、Electron／網頁應用與韌體），連同它的 rea MCP。
+- 預裝 Ghidra 12.2 與 JDK 25，讓 rea 可以反編譯原生程式（image 因此大約多 1 GB 以上）。
+- 說明頁加上這兩個 plugin 的介紹與技能中文說明，MCP 區塊也列出 plugin 自帶的 MCP。
+
 ---
 
 ## [1.0.0] - 2026-11-23

@@ -5,4 +5,6 @@
 mattpocock               mattpocock/skills                    mattpocock-skills
 cursor-plugins           cursor/plugins                       pstack
 impeccable               pbakaus/impeccable                   impeccable
+ui-ux-pro-max-skill      nextlevelbuilder/ui-ux-pro-max-skill ui-ux-pro-max
+rea                      morluto/rea                          rea
 claude-plugins-official  anthropics/claude-plugins-official   rust-analyzer-lsp gopls-lsp pyright-lsp typescript-lsp

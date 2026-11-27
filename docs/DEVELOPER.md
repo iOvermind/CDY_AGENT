@@ -15,8 +15,10 @@
 | 基底 image | `node:24-bookworm-slim`、egress 用 `debian:bookworm-slim` | — |
 | ttyd | 1.7.7（`Dockerfile` 的 `ARG TTYD_VERSION`） | 瀏覽器終端機 |
 | Go | 1.27.4（`Dockerfile` 的 `ARG GO_VERSION`） | 預裝給同仁用的工具鏈 |
+| Ghidra | 12.2（`Dockerfile` 的 `ARG GHIDRA_VERSION`、`GHIDRA_DATE`、`GHIDRA_SHA256`，三個一起改） | rea plugin 的原生反編譯引擎；REA 要求 12.2 以上 |
+| JDK | Temurin 25（建 image 時取 25 的最新修正版） | Ghidra 用 |
 
-**作業系統限制**：正式 image 只建 linux/amd64。在 Apple Silicon 上 `./build.sh` 建的是本機架構（arm64），只能驗證「建得起來、跑得動」；`./push-hub.sh` 建 amd64 要靠模擬，很慢。
+**作業系統限制**：正式 image 只建 linux/amd64。在 Apple Silicon 上 `./build.sh` 建的是本機架構（arm64），只能驗證「建得起來、跑得動」（Ghidra 官方壓縮檔沒有 arm64 的原生反編譯器，本機 arm64 版 rea 不能反編譯原生程式）；`./push-hub.sh` 建 amd64 要靠模擬，很慢。
 
 ---
 

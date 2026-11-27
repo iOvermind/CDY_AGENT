@@ -30,9 +30,10 @@
 | :--- | :--- |
 | Agent CLI | Claude Code、Gemini CLI、Codex CLI（不鎖版本，每次建 image 拿最新） |
 | 語言工具鏈 | Node 24、Rust stable（rust-analyzer、clippy、rustfmt）、Go、uv（Python 版本與 venv 由各人自己管） |
+| 逆向工程 | Ghidra 12.2 與 JDK 25（給 rea plugin 反編譯原生程式） |
 | LSP | rust-analyzer、gopls、pyright、typescript-language-server |
-| Claude plugin | 見 [`plugins.txt`](plugins.txt)：mattpocock-skills、pstack、impeccable、rust-analyzer-lsp、gopls-lsp、pyright-lsp、typescript-lsp |
-| MCP | codegraph（含 `UserPromptSubmit` hook；在專案裡跑 `codegraph init` 後才有作用） |
+| Claude plugin | 見 [`plugins.txt`](plugins.txt)：mattpocock-skills、pstack、impeccable、ui-ux-pro-max、rea、rust-analyzer-lsp、gopls-lsp、pyright-lsp、typescript-lsp |
+| MCP | codegraph（含 `UserPromptSubmit` hook；在專案裡跑 `codegraph init` 後才有作用）；rea（隨 rea plugin 一起裝，原生反編譯用預裝的 Ghidra） |
 | repo 管理 | `mr`（myrepos）、`tokei` |
 | 其他 | git、tmux、ripgrep、fd、fzf、jq、neovim、vim、htop、build-essential 等 |
 
@@ -84,7 +85,7 @@
 
 #### 說明頁
 
-在選單按 `?`（或 `h`），或在 shell 裡打 `agent-help`：列出選單與 tmux 快捷鍵、三個 Agent、所有已安裝的 Claude plugin 與技能（即時讀取實際安裝內容）、MCP、語言工具、常用工具、目錄與網路限制。用 less 顯示，`q` 離開、`/` 搜尋。
+在選單按 `?`（或 `h`），或在 shell 裡打 `agent-help`：列出選單與 tmux 快捷鍵、三個 Agent、所有已安裝的 Claude plugin 與技能（即時讀取實際安裝內容）、MCP（含 plugin 自帶的，例如 rea）、語言工具、常用工具、目錄與網路限制。用 less 顯示，`q` 離開、`/` 搜尋。
 
 每個技能標註觸發方式：〔自動〕Claude 依需求自己判斷使用、〔被動〕由其他技能載入（pstack 的 principle-* 由 `/poteto-mode` 載入）、〔手動〕要自己打 `/名稱`。有子指令的技能（目前是 impeccable）會即時讀取它 SKILL.md 裡的指令表，依分類列出，已棄用的不列。
 

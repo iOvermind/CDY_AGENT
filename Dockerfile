@@ -12,6 +12,11 @@ ARG UID=3000
 ARG GID=3000
 ARG TTYD_VERSION=1.7.7
 ARG GO_VERSION=1.27.4
+# Ghidra 給 rea plugin 做原生程式反編譯用。REA 要求 Ghidra >= 12.2 與 JDK 25。
+# 升版時三個值一起改：版本、壓縮檔日期、官方 release 頁上的 SHA-256。
+ARG GHIDRA_VERSION=12.2
+ARG GHIDRA_DATE=20261016
+ARG GHIDRA_SHA256=2c2cd776db3c1f6a097ba418922378ac3649cadd5e844a6f5f088ae628a7be67
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
@@ -21,9 +26,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
     RUSTUP_HOME=/opt/rust/rustup \
     CARGO_HOME=/opt/rust/cargo \
     GOPATH=/home/dev/go \
-    GOTOOLCHAIN=local
+    GOTOOLCHAIN=local \
+    JAVA_HOME=/opt/jdk \
+    GHIDRA_INSTALL_DIR=/opt/ghidra
 
-ENV PATH="/opt/npm-global/bin:/opt/rust/cargo/bin:/usr/local/go/bin:/opt/go-tools/bin:/home/dev/go/bin:/home/dev/.local/bin:${PATH}"
+ENV PATH="/opt/jdk/bin:/opt/npm-global/bin:/opt/rust/cargo/bin:/usr/local/go/bin:/opt/go-tools/bin:/home/dev/go/bin:/home/dev/.local/bin:${PATH}"
 
 # 基礎工具、搜尋與編輯器、Rust/Go 編譯需要的工具鏈依賴，以及工號選單用的 python3（只給選單用，
 # 同仁的專案請用 uv 自己裝 Python 版本與 venv）。
@@ -67,6 +74,18 @@ RUN ARCH="$(uname -m)" \
 # Go 官方 tarball。
 RUN ARCH="$(dpkg --print-architecture)" \
     && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" | tar -C /usr/local -xz
+
+# rea 的 Ghidra：JDK 25（Temurin，取 25 的最新修正版）與 Ghidra 官方壓縮檔（固定版本、驗 SHA-256）。
+# 官方壓縮檔只附 Linux x64 的原生反編譯器：正式 image（amd64）可以反編譯；本機 arm64 建的版本
+# 裝得起來，但 rea 會回報沒有反編譯器。
+RUN case "$(dpkg --print-architecture)" in arm64) JDK_ARCH=aarch64 ;; *) JDK_ARCH=x64 ;; esac \
+    && curl -fsSL "https://api.adoptium.net/v3/binary/latest/25/ga/linux/${JDK_ARCH}/jdk/hotspot/normal/eclipse" -o /tmp/jdk.tar.gz \
+    && mkdir -p /opt/jdk && tar -C /opt/jdk --strip-components=1 -xzf /tmp/jdk.tar.gz && rm /tmp/jdk.tar.gz \
+    && curl -fsSL "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_${GHIDRA_VERSION}_build/ghidra_${GHIDRA_VERSION}_PUBLIC_${GHIDRA_DATE}.zip" -o /tmp/ghidra.zip \
+    && echo "${GHIDRA_SHA256}  /tmp/ghidra.zip" | sha256sum -c - \
+    && unzip -q /tmp/ghidra.zip -d /opt && rm /tmp/ghidra.zip \
+    && mv "/opt/ghidra_${GHIDRA_VERSION}_PUBLIC" /opt/ghidra \
+    && java -version && test -x /opt/ghidra/support/analyzeHeadless
 
 # uv：同仁自己用 `uv python install`、`uv venv` 管 Python 版本，裝在家目錄底下，跨重建保留。
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
