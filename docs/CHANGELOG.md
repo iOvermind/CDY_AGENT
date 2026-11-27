@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+---
+
+## [1.1.0] - 2026-11-28
+
 ### Added (新增)
 - 預裝 Claude plugin `ui-ux-pro-max`（UI/UX 設計知識庫：風格、配色、字型、UX 準則與各框架寫法，另含品牌、簡報、橫幅等設計技能）。
 - 預裝 Claude plugin `rea`（逆向工程：分析已發佈的執行檔、套件、Electron／網頁應用與韌體），連同它的 rea MCP。
